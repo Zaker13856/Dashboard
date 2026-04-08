@@ -25,14 +25,14 @@ export const TimesheetProvider = ({ children }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [{ data: p }, { data: e }, { data: a }] = await Promise.all([
+      const [{ data: p, error: pErr }, { data: e, error: eErr }, { data: a, error: aErr }] = await Promise.all([
         supabase.from('projects').select('*'),
         supabase.from('timesheets').select('*'),
         supabase.from('allocations').select('*'),
       ]);
-      if (p) setProjects(p);
-      if (e) setEntries(e);
-      if (a) setAllocations(a);
+      if (!pErr) setProjects(p || []);
+      if (!eErr) setEntries(e || []);
+      if (!aErr) setAllocations(a || []);
       setLoading(false);
     };
 

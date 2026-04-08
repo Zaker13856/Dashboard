@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 const AdminDashboard = () => {
   const { consultants } = useAuth();
-  const { getAnnualHours, projects, getMonthlyBreakdownForYear } = useTimesheet();
+  const { getAnnualHours, projects, allocations, getMonthlyBreakdownForYear } = useTimesheet();
   const { formatCurrency } = useProjectFinancials();
 
   const currentYear = new Date().getFullYear();
@@ -29,24 +29,17 @@ const AdminDashboard = () => {
   [consultants, currentYear, getAnnualHours]);
 
   const totalPlannedHours = useMemo(() =>
-    projects.reduce((sum, p) => sum + (parseFloat(p.estimatedHours) || 0), 0),
-  [projects]);
+    allocations.reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0),
+  [allocations]);
 
-  const totalAllocatedHours = useMemo(() =>
-    projects.reduce((sum, p) => {
-      const projectAllocated = (p.assignedConsultants || []).reduce((s, a) => s + (parseFloat(a.allocatedHours) || 0), 0);
-      return sum + projectAllocated;
-    }, 0),
-  [projects]);
-
-  const allocationPercentage = totalPlannedHours > 0 ? (totalAllocatedHours / totalPlannedHours) * 100 : 0;
+  const allocationPercentage = totalPlannedHours > 0 ? (totalHoursWorked / totalPlannedHours) * 100 : 0;
 
   let progressColor = "bg-green-500";
   if (allocationPercentage > 90) progressColor = "bg-red-500";
   else if (allocationPercentage > 70) progressColor = "bg-yellow-500";
 
   const totalPortfolioBudget = useMemo(() =>
-    projects.reduce((sum, p) => sum + (parseFloat(p.totalValue) || 0), 0),
+    projects.reduce((sum, p) => sum + (parseFloat(p.total_value || p.totalValue || p.budget) || 0), 0),
   [projects]);
 
   const monthlyBreakdown = useMemo(() =>
@@ -108,7 +101,7 @@ const AdminDashboard = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-600 font-medium">{allocationPercentage.toFixed(1)}% Allocato</span>
-                  <span className="text-gray-400">{totalAllocatedHours.toLocaleString()}h usate</span>
+                  <span className="text-gray-400">{totalHoursWorked.toFixed(0)}h usate</span>
                 </div>
                 <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
                   <div
