@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Loader2, AlertCircle, X } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
@@ -24,7 +24,7 @@ const nextLocalId = () => `local_${++localIdCounter}`;
 
 const TimesheetMonthForm = () => {
   const { user } = useAuth();
-  const { allocations, projects } = useTimesheet();
+  const { projects } = useTimesheet();
 
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -36,7 +36,11 @@ const TimesheetMonthForm = () => {
     isinnova_altro_note: '',
   });
 
+  // [{ localId, id (db), projectId, projectName, hours }]
   const [projectRows, setProjectRows] = useState([]);
+  const projectRowsToDelete = useRef([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+
   const [freeRows, setFreeRows] = useState([]);
   const freeRowsToDelete = useRef([]);
 
@@ -61,6 +65,7 @@ const TimesheetMonthForm = () => {
       setLoading(true);
       isFirstLoad.current = true;
       freeRowsToDelete.current = [];
+      projectRowsToDelete.current = [];
 
       const { data: rows } = await supabase
         .from('timesheets')
@@ -84,17 +89,19 @@ const TimesheetMonthForm = () => {
       });
       setFixedHours(newFixed);
 
-      const consultantAllocations = allocations.filter(a => a.consultant_id === user.id);
-      const newProjectRows = consultantAllocations.map(a => {
-        const project = projects.find(p => p.id === a.project_id);
-        const dbRow = dbRows.find(r => r.activity_type === 'project' && r.project_id === a.project_id);
-        return {
-          projectId: a.project_id,
-          projectName: project?.name || 'Progetto sconosciuto',
-          hours: dbRow ? parseFloat(dbRow.hours) || 0 : 0,
-          dbId: dbRow?.id || null,
-        };
-      });
+      // Carica righe progetto esistenti per questo mese
+      const newProjectRows = dbRows
+        .filter(r => r.activity_type === 'project' && r.project_id)
+        .map(r => {
+          const project = projects.find(p => p.id === r.project_id);
+          return {
+            localId: nextLocalId(),
+            id: r.id,
+            projectId: r.project_id,
+            projectName: project?.name || 'Progetto sconosciuto',
+            hours: parseFloat(r.hours) || 0,
+          };
+        });
       setProjectRows(newProjectRows);
 
       const newFreeRows = dbRows
@@ -113,11 +120,11 @@ const TimesheetMonthForm = () => {
     };
 
     if (user?.id) load();
-  }, [selectedYear, selectedMonth, user?.id, allocations, projects]);
+  }, [selectedYear, selectedMonth, user?.id, projects]);
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  const save = useCallback(async (fixed, projRows, freeR, toDelete) => {
+  const save = useCallback(async (fixed, projRows, freeR, toDelete, freeToDelete) => {
     setSaveStatus('saving');
     try {
       const deletes = [];
@@ -145,28 +152,38 @@ const TimesheetMonthForm = () => {
         }
       }
 
-      // Project rows
+      // Project rows da eliminare
+      toDelete.forEach(dbId => {
+        deletes.push(supabase.from('timesheets').delete().eq('id', dbId));
+      });
+
+      // Free rows da eliminare
+      freeToDelete.forEach(dbId => {
+        deletes.push(supabase.from('timesheets').delete().eq('id', dbId));
+      });
+
+      await Promise.all(deletes);
+
+      // Project rows: insert o update per id
       for (const row of projRows) {
-        if (row.hours > 0) {
-          await supabase.from('timesheets').upsert({
+        if (row.id) {
+          await supabase.from('timesheets').update({ hours: row.hours }).eq('id', row.id);
+        } else {
+          const { data } = await supabase.from('timesheets').insert({
             consultant_id: user.id,
             date: firstOfMonth,
             activity_type: 'project',
             project_id: row.projectId,
             hours: row.hours,
             activity_note: null,
-          }, { onConflict: 'consultant_id,date,project_id' });
-        } else if (row.dbId) {
-          deletes.push(supabase.from('timesheets').delete().eq('id', row.dbId));
+          }).select().single();
+          if (data) {
+            setProjectRows(prev => prev.map(r =>
+              r.localId === row.localId ? { ...r, id: data.id } : r
+            ));
+          }
         }
       }
-
-      // Free rows da eliminare
-      toDelete.forEach(dbId => {
-        deletes.push(supabase.from('timesheets').delete().eq('id', dbId));
-      });
-
-      await Promise.all(deletes);
 
       // Free rows: insert o update per id
       for (const row of freeR) {
@@ -194,6 +211,7 @@ const TimesheetMonthForm = () => {
         }
       }
 
+      projectRowsToDelete.current = [];
       freeRowsToDelete.current = [];
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -206,7 +224,7 @@ const TimesheetMonthForm = () => {
     if (isFirstLoad.current) return;
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-      save(fixed, projRows, freeR, [...freeRowsToDelete.current]);
+      save(fixed, projRows, freeR, [...projectRowsToDelete.current], [...freeRowsToDelete.current]);
     }, 1500);
   }, [save]);
 
@@ -218,10 +236,34 @@ const TimesheetMonthForm = () => {
     triggerSave(updated, projectRows, freeRows);
   };
 
-  const handleProjectChange = (projectId, hours) => {
+  const handleAddProject = () => {
+    if (!selectedProjectId) return;
+    if (projectRows.find(r => r.projectId === selectedProjectId)) return;
+    const project = projects.find(p => p.id === selectedProjectId);
+    const updated = [...projectRows, {
+      localId: nextLocalId(),
+      id: null,
+      projectId: selectedProjectId,
+      projectName: project?.name || 'Progetto sconosciuto',
+      hours: 0,
+    }];
+    setProjectRows(updated);
+    setSelectedProjectId('');
+    triggerSave(fixedHours, updated, freeRows);
+  };
+
+  const handleProjectChange = (localId, hours) => {
     const updated = projectRows.map(r =>
-      r.projectId === projectId ? { ...r, hours } : r
+      r.localId === localId ? { ...r, hours } : r
     );
+    setProjectRows(updated);
+    triggerSave(fixedHours, updated, freeRows);
+  };
+
+  const handleProjectDelete = (localId) => {
+    const row = projectRows.find(r => r.localId === localId);
+    if (row?.id) projectRowsToDelete.current.push(row.id);
+    const updated = projectRows.filter(r => r.localId !== localId);
     setProjectRows(updated);
     triggerSave(fixedHours, updated, freeRows);
   };
@@ -370,21 +412,49 @@ const TimesheetMonthForm = () => {
       {/* Sezione: Progetti */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Progetti</h3>
-        {projectRows.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">Nessun progetto assegnato.</p>
-        ) : (
-          projectRows.map(row => (
-            <div key={row.projectId} className="flex items-center gap-3">
-              <span className="flex-1 text-sm text-gray-700">{row.projectName}</span>
-              <input
-                type="number" min="0" step="0.5"
-                className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
-                value={row.hours}
-                onChange={e => handleProjectChange(row.projectId, parseFloat(e.target.value) || 0)}
-              />
-            </div>
-          ))
+        {projectRows.length === 0 && (
+          <p className="text-sm text-gray-400">Nessun progetto aggiunto per questo mese.</p>
         )}
+        {projectRows.map(row => (
+          <div key={row.localId} className="flex items-center gap-3">
+            <span className="flex-1 text-sm text-gray-700">{row.projectName}</span>
+            <input
+              type="number" min="0" step="0.5"
+              className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+              value={row.hours}
+              onChange={e => handleProjectChange(row.localId, parseFloat(e.target.value) || 0)}
+            />
+            <button
+              onClick={() => handleProjectDelete(row.localId)}
+              className="text-gray-400 hover:text-red-500 transition-colors p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 pt-1">
+          <select
+            className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm bg-white"
+            value={selectedProjectId}
+            onChange={e => setSelectedProjectId(e.target.value)}
+          >
+            <option value="">— Seleziona progetto —</option>
+            {projects
+              .filter(p => !projectRows.find(r => r.projectId === p.id))
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))
+            }
+          </select>
+          <button
+            onClick={handleAddProject}
+            disabled={!selectedProjectId}
+            className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            + Aggiungi
+          </button>
+        </div>
       </div>
 
       {/* Sezione: Attività libere */}
