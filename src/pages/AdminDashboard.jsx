@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
 import { useProjectFinancials } from '@/hooks/useProjectFinancials';
@@ -7,13 +7,31 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, Clock, PieChart, TrendingUp, Euro, Briefcase } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/customSupabaseClient';
 
 const AdminDashboard = () => {
   const { consultants } = useAuth();
-  const { getAnnualHours, projects, allocations, getMonthlyBreakdownForYear } = useTimesheet();
+  const { getAnnualHours, projects, getMonthlyBreakdownForYear } = useTimesheet();
   const { formatCurrency } = useProjectFinancials();
 
   const currentYear = new Date().getFullYear();
+
+  const [hoursData, setHoursData] = useState({ planned: 0, sold: 0 });
+
+  useEffect(() => {
+    const fetchHours = async () => {
+      const [{ data: rates }, { data: allocs }] = await Promise.all([
+        supabase.from('consultant_rates').select('ore_max').eq('year', currentYear),
+        supabase.from('allocations').select('allocated_hours, project_periods(year)'),
+      ]);
+      const planned = (rates || []).reduce((sum, r) => sum + (parseFloat(r.ore_max) || 0), 0);
+      const sold = (allocs || [])
+        .filter(a => a.project_periods?.year === currentYear)
+        .reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0);
+      setHoursData({ planned, sold });
+    };
+    fetchHours();
+  }, [currentYear]);
 
   const totalHoursWorked = useMemo(() =>
     consultants.reduce((sum, c) => sum + getAnnualHours(currentYear, c.id), 0),
@@ -28,11 +46,9 @@ const AdminDashboard = () => {
     }, 0),
   [consultants, currentYear, getAnnualHours]);
 
-  const totalPlannedHours = useMemo(() =>
-    allocations.reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0),
-  [allocations]);
-
-  const allocationPercentage = totalPlannedHours > 0 ? (totalHoursWorked / totalPlannedHours) * 100 : 0;
+  const allocationPercentage = hoursData.planned > 0
+    ? (hoursData.sold / hoursData.planned) * 100
+    : 0;
 
   let progressColor = "bg-green-500";
   if (allocationPercentage > 90) progressColor = "bg-red-500";
@@ -92,16 +108,16 @@ const AdminDashboard = () => {
                 <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-1 rounded-full">Pianificato</span>
               </div>
               <div className="mb-3">
-                <p className="text-sm text-gray-500 font-medium">Ore Totali Pianificate</p>
+                <p className="text-sm text-gray-500 font-medium">Ore Vendute / Pianificate</p>
                 <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-bold text-gray-900">{totalPlannedHours.toLocaleString()}</h3>
-                  <span className="text-xs text-gray-400">ore</span>
+                  <h3 className="text-2xl font-bold text-gray-900">{hoursData.sold.toLocaleString()}</h3>
+                  <span className="text-xs text-gray-400">/ {hoursData.planned.toLocaleString()}h</span>
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-600 font-medium">{allocationPercentage.toFixed(1)}% Allocato</span>
-                  <span className="text-gray-400">{totalHoursWorked.toFixed(0)}h usate</span>
+                  <span className="text-gray-600 font-medium">{allocationPercentage.toFixed(1)}% Venduto</span>
+                  <span className="text-gray-400">{(hoursData.planned - hoursData.sold).toLocaleString()}h disponibili</span>
                 </div>
                 <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
                   <div
