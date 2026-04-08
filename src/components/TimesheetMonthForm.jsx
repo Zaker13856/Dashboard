@@ -386,14 +386,14 @@ const TimesheetMonthForm = () => {
       </div>
 
       {/* Ferie & Malattia */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Ferie & Malattia</h3>
+      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-2">
+        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-1">Ferie & Malattia</h3>
         {[{ key: 'ferie', label: 'Ferie' }, { key: 'malattia', label: 'Malattia' }].map(({ key, label }) => (
           <div key={key} className="flex items-center gap-3">
             <span className="flex-1 text-sm text-gray-700">{label}</span>
             <input
               type="number" min="0" step="0.5"
-              className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+              className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
               value={fixedHours[key]}
               onChange={e => handleFixedChange(key, parseFloat(e.target.value) || 0)}
             />
@@ -402,8 +402,8 @@ const TimesheetMonthForm = () => {
       </div>
 
       {/* ISINNOVA */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">ISINNOVA</h3>
+      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-2">
+        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-1">ISINNOVA</h3>
         {[
           { key: 'isinnova_comunicazione', label: 'Comunicazione' },
           { key: 'isinnova_amministrazione', label: 'Amministrazione' },
@@ -412,7 +412,7 @@ const TimesheetMonthForm = () => {
             <span className="flex-1 text-sm text-gray-700">{label}</span>
             <input
               type="number" min="0" step="0.5"
-              className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+              className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
               value={fixedHours[key]}
               onChange={e => handleFixedChange(key, parseFloat(e.target.value) || 0)}
             />
@@ -422,13 +422,13 @@ const TimesheetMonthForm = () => {
           <span className="flex-1 text-sm text-gray-700">Altro</span>
           <input
             type="text" placeholder="Nota"
-            className="flex-[2] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            className="flex-[2] rounded-md border border-gray-300 px-2 py-1 text-sm"
             value={fixedHours.isinnova_altro_note}
             onChange={e => handleFixedChange('isinnova_altro_note', e.target.value)}
           />
           <input
             type="number" min="0" step="0.5"
-            className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+            className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
             value={fixedHours.isinnova_altro}
             onChange={e => handleFixedChange('isinnova_altro', parseFloat(e.target.value) || 0)}
           />
@@ -436,8 +436,8 @@ const TimesheetMonthForm = () => {
       </div>
 
       {/* Progetti */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Progetti</h3>
+      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-2">
+        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-1">Progetti</h3>
         {projectRows.length === 0 && (
           <p className="text-sm text-gray-400">Nessun progetto aggiunto per questo mese.</p>
         )}
@@ -446,7 +446,7 @@ const TimesheetMonthForm = () => {
             <span className="flex-1 text-sm text-gray-700">{row.projectName}</span>
             <input
               type="number" min="0" step="0.5"
-              className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+              className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
               value={row.hours}
               onChange={e => handleProjectChange(row.localId, parseFloat(e.target.value) || 0)}
             />
@@ -479,8 +479,8 @@ const TimesheetMonthForm = () => {
       </div>
 
       {/* Attività persistenti */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Attività</h3>
+      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-2">
+        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-1">Attività</h3>
 
         {activities.length === 0 && !showNewActivity && (
           <p className="text-sm text-gray-400">Nessuna attività in corso.</p>
@@ -495,7 +495,7 @@ const TimesheetMonthForm = () => {
               <span className="flex-1 text-sm text-gray-700">{activity.activity_note}</span>
               <input
                 type="number" min="0" step="0.5"
-                className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+                className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
                 value={ah.hours}
                 onChange={e => handleActivityHoursChange(activity.id, parseFloat(e.target.value) || 0)}
               />
