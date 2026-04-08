@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, AlertCircle, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Loader2, AlertCircle, X, Archive } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
-import TimesheetFreeRow from '@/components/TimesheetFreeRow';
 
 const MONTH_NAMES_IT = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -15,7 +14,12 @@ const FIXED_ACTIVITY_TYPES = [
   'isinnova_comunicazione', 'isinnova_amministrazione', 'isinnova_altro'
 ];
 
-const FREE_ACTIVITY_TYPES = ['tender_sub', 'proposta', 'consulenza', 'altro'];
+const ACTIVITY_CATEGORIES = [
+  { value: 'tender_sub', label: 'Tender-Sub' },
+  { value: 'proposta',   label: 'Proposta' },
+  { value: 'consulenza', label: 'Consulenza' },
+  { value: 'altro',      label: 'Altro' },
+];
 
 const MONTHLY_LIMIT = 160;
 
@@ -27,7 +31,7 @@ const TimesheetMonthForm = () => {
   const { projects } = useTimesheet();
 
   const now = new Date();
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedYear, setSelectedYear]   = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
 
   const [fixedHours, setFixedHours] = useState({
@@ -36,18 +40,23 @@ const TimesheetMonthForm = () => {
     isinnova_altro_note: '',
   });
 
-  // [{ localId, id (db), projectId, projectName, hours }]
-  const [projectRows, setProjectRows] = useState([]);
-  const projectRowsToDelete = useRef([]);
+  const [projectRows, setProjectRows]           = useState([]);
+  const projectRowsToDelete                     = useRef([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
 
-  const [freeRows, setFreeRows] = useState([]);
-  const freeRowsToDelete = useRef([]);
+  // activities: [{ id, activity_type, activity_note }] — persistenti
+  // activityHours: { [activityId]: { timesheetId, hours } } — per mese
+  const [activities, setActivities]       = useState([]);
+  const [activityHours, setActivityHours] = useState({});
 
-  const [loading, setLoading] = useState(true);
+  const [showNewActivity, setShowNewActivity] = useState(false);
+  const [newActivityType, setNewActivityType] = useState('proposta');
+  const [newActivityNote, setNewActivityNote] = useState('');
+
+  const [loading, setLoading]       = useState(true);
   const [saveStatus, setSaveStatus] = useState('idle');
-  const debounceTimer = useRef(null);
-  const isFirstLoad = useRef(true);
+  const debounceTimer               = useRef(null);
+  const isFirstLoad                 = useRef(true);
 
   const firstOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
 
@@ -55,7 +64,7 @@ const TimesheetMonthForm = () => {
     fixedHours.ferie + fixedHours.malattia +
     fixedHours.isinnova_comunicazione + fixedHours.isinnova_amministrazione + fixedHours.isinnova_altro +
     projectRows.reduce((s, r) => s + r.hours, 0) +
-    freeRows.reduce((s, r) => s + r.hours, 0)
+    Object.values(activityHours).reduce((s, v) => s + (v.hours || 0), 0)
   );
 
   // ── Caricamento ───────────────────────────────────────────────────────────
@@ -64,15 +73,22 @@ const TimesheetMonthForm = () => {
     const load = async () => {
       setLoading(true);
       isFirstLoad.current = true;
-      freeRowsToDelete.current = [];
       projectRowsToDelete.current = [];
+
+      const { data: activitiesData } = await supabase
+        .from('consultant_activities')
+        .select('*')
+        .eq('consultant_id', user.id)
+        .eq('status', 'active')
+        .order('created_at');
+      const loadedActivities = activitiesData || [];
+      setActivities(loadedActivities);
 
       const { data: rows } = await supabase
         .from('timesheets')
         .select('*')
         .eq('consultant_id', user.id)
         .eq('date', firstOfMonth);
-
       const dbRows = rows || [];
 
       const newFixed = {
@@ -89,7 +105,6 @@ const TimesheetMonthForm = () => {
       });
       setFixedHours(newFixed);
 
-      // Carica righe progetto esistenti per questo mese
       const newProjectRows = dbRows
         .filter(r => r.activity_type === 'project' && r.project_id)
         .map(r => {
@@ -104,16 +119,18 @@ const TimesheetMonthForm = () => {
         });
       setProjectRows(newProjectRows);
 
-      const newFreeRows = dbRows
-        .filter(r => FREE_ACTIVITY_TYPES.includes(r.activity_type))
-        .map(r => ({
-          localId: nextLocalId(),
-          id: r.id,
-          activity_type: r.activity_type,
-          activity_note: r.activity_note || '',
-          hours: parseFloat(r.hours) || 0,
-        }));
-      setFreeRows(newFreeRows);
+      const newActivityHours = {};
+      loadedActivities.forEach(activity => {
+        const tsRow = dbRows.find(r =>
+          r.activity_type === activity.activity_type &&
+          r.activity_note === activity.activity_note
+        );
+        newActivityHours[activity.id] = {
+          timesheetId: tsRow?.id || null,
+          hours: tsRow ? parseFloat(tsRow.hours) || 0 : 0,
+        };
+      });
+      setActivityHours(newActivityHours);
 
       setLoading(false);
       setTimeout(() => { isFirstLoad.current = false; }, 100);
@@ -124,15 +141,14 @@ const TimesheetMonthForm = () => {
 
   // ── Save ──────────────────────────────────────────────────────────────────
 
-  const save = useCallback(async (fixed, projRows, freeR, toDelete, freeToDelete) => {
+  const save = useCallback(async (fixed, projRows, projToDelete, actHours, activitiesList) => {
     setSaveStatus('saving');
     try {
       const deletes = [];
 
-      // Fixed rows: upsert se ore > 0, delete se ore = 0
       for (const type of FIXED_ACTIVITY_TYPES) {
         const hours = fixed[type];
-        const note = type === 'isinnova_altro' ? fixed.isinnova_altro_note : null;
+        const note  = type === 'isinnova_altro' ? fixed.isinnova_altro_note : null;
         if (hours > 0) {
           await supabase.from('timesheets').upsert({
             consultant_id: user.id,
@@ -152,19 +168,12 @@ const TimesheetMonthForm = () => {
         }
       }
 
-      // Project rows da eliminare
-      toDelete.forEach(dbId => {
-        deletes.push(supabase.from('timesheets').delete().eq('id', dbId));
-      });
-
-      // Free rows da eliminare
-      freeToDelete.forEach(dbId => {
+      projToDelete.forEach(dbId => {
         deletes.push(supabase.from('timesheets').delete().eq('id', dbId));
       });
 
       await Promise.all(deletes);
 
-      // Project rows: insert o update per id
       for (const row of projRows) {
         if (row.id) {
           await supabase.from('timesheets').update({ hours: row.hours }).eq('id', row.id);
@@ -185,34 +194,38 @@ const TimesheetMonthForm = () => {
         }
       }
 
-      // Free rows: insert o update per id
-      for (const row of freeR) {
-        if (!row.activity_note?.trim()) continue;
-        if (row.id) {
-          await supabase.from('timesheets').update({
-            activity_type: row.activity_type,
-            activity_note: row.activity_note,
-            hours: row.hours,
-          }).eq('id', row.id);
-        } else {
-          const { data } = await supabase.from('timesheets').insert({
-            consultant_id: user.id,
-            date: firstOfMonth,
-            activity_type: row.activity_type,
-            activity_note: row.activity_note,
-            hours: row.hours,
-            project_id: null,
-          }).select().single();
-          if (data) {
-            setFreeRows(prev => prev.map(r =>
-              r.localId === row.localId ? { ...r, id: data.id } : r
-            ));
+      for (const [activityId, { timesheetId, hours }] of Object.entries(actHours)) {
+        const activity = activitiesList.find(a => a.id === activityId);
+        if (!activity) continue;
+        if (hours > 0) {
+          if (timesheetId) {
+            await supabase.from('timesheets').update({ hours }).eq('id', timesheetId);
+          } else {
+            const { data } = await supabase.from('timesheets').insert({
+              consultant_id: user.id,
+              date: firstOfMonth,
+              activity_type: activity.activity_type,
+              activity_note: activity.activity_note,
+              hours,
+              project_id: null,
+            }).select().single();
+            if (data) {
+              setActivityHours(prev => ({
+                ...prev,
+                [activityId]: { timesheetId: data.id, hours },
+              }));
+            }
           }
+        } else if (timesheetId) {
+          await supabase.from('timesheets').delete().eq('id', timesheetId);
+          setActivityHours(prev => ({
+            ...prev,
+            [activityId]: { timesheetId: null, hours: 0 },
+          }));
         }
       }
 
       projectRowsToDelete.current = [];
-      freeRowsToDelete.current = [];
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch {
@@ -220,20 +233,25 @@ const TimesheetMonthForm = () => {
     }
   }, [user?.id, firstOfMonth]);
 
-  const triggerSave = useCallback((fixed, projRows, freeR) => {
+  const triggerSave = useCallback((fixed, projRows, actHours) => {
     if (isFirstLoad.current) return;
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-      save(fixed, projRows, freeR, [...projectRowsToDelete.current], [...freeRowsToDelete.current]);
+      save(fixed, projRows, [...projectRowsToDelete.current], actHours, activities);
     }, 1500);
-  }, [save]);
+  }, [save, activities]);
+
+  const handleSaveNow = () => {
+    clearTimeout(debounceTimer.current);
+    save(fixedHours, projectRows, [...projectRowsToDelete.current], activityHours, activities);
+  };
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleFixedChange = (field, value) => {
     const updated = { ...fixedHours, [field]: value };
     setFixedHours(updated);
-    triggerSave(updated, projectRows, freeRows);
+    triggerSave(updated, projectRows, activityHours);
   };
 
   const handleAddProject = () => {
@@ -241,23 +259,20 @@ const TimesheetMonthForm = () => {
     if (projectRows.find(r => r.projectId === selectedProjectId)) return;
     const project = projects.find(p => p.id === selectedProjectId);
     const updated = [...projectRows, {
-      localId: nextLocalId(),
-      id: null,
+      localId: nextLocalId(), id: null,
       projectId: selectedProjectId,
       projectName: project?.name || 'Progetto sconosciuto',
       hours: 0,
     }];
     setProjectRows(updated);
     setSelectedProjectId('');
-    triggerSave(fixedHours, updated, freeRows);
+    triggerSave(fixedHours, updated, activityHours);
   };
 
   const handleProjectChange = (localId, hours) => {
-    const updated = projectRows.map(r =>
-      r.localId === localId ? { ...r, hours } : r
-    );
+    const updated = projectRows.map(r => r.localId === localId ? { ...r, hours } : r);
     setProjectRows(updated);
-    triggerSave(fixedHours, updated, freeRows);
+    triggerSave(fixedHours, updated, activityHours);
   };
 
   const handleProjectDelete = (localId) => {
@@ -265,33 +280,39 @@ const TimesheetMonthForm = () => {
     if (row?.id) projectRowsToDelete.current.push(row.id);
     const updated = projectRows.filter(r => r.localId !== localId);
     setProjectRows(updated);
-    triggerSave(fixedHours, updated, freeRows);
+    triggerSave(fixedHours, updated, activityHours);
   };
 
-  const handleFreeChange = (localId, field, value) => {
-    const updated = freeRows.map(r =>
-      r.localId === localId ? { ...r, [field]: value } : r
-    );
-    setFreeRows(updated);
+  const handleActivityHoursChange = (activityId, hours) => {
+    const updated = { ...activityHours, [activityId]: { ...activityHours[activityId], hours } };
+    setActivityHours(updated);
     triggerSave(fixedHours, projectRows, updated);
   };
 
-  const handleFreeDelete = (localId) => {
-    const row = freeRows.find(r => r.localId === localId);
-    if (row?.id) freeRowsToDelete.current.push(row.id);
-    const updated = freeRows.filter(r => r.localId !== localId);
-    setFreeRows(updated);
-    triggerSave(fixedHours, projectRows, updated);
+  const handleCloseActivity = async (activityId) => {
+    await supabase.from('consultant_activities').update({ status: 'closed' }).eq('id', activityId);
+    setActivities(prev => prev.filter(a => a.id !== activityId));
+    setActivityHours(prev => {
+      const updated = { ...prev };
+      delete updated[activityId];
+      return updated;
+    });
   };
 
-  const handleAddFreeRow = () => {
-    setFreeRows(prev => [...prev, {
-      localId: nextLocalId(),
-      id: null,
-      activity_type: 'tender_sub',
-      activity_note: '',
-      hours: 0,
-    }]);
+  const handleCreateActivity = async () => {
+    if (!newActivityNote.trim()) return;
+    const { data } = await supabase.from('consultant_activities').insert({
+      consultant_id: user.id,
+      activity_type: newActivityType,
+      activity_note: newActivityNote.trim(),
+      status: 'active',
+    }).select().single();
+    if (data) {
+      setActivities(prev => [...prev, data]);
+      setActivityHours(prev => ({ ...prev, [data.id]: { timesheetId: null, hours: 0 } }));
+      setNewActivityNote('');
+      setShowNewActivity(false);
+    }
   };
 
   const handlePrevMonth = () => {
@@ -318,7 +339,7 @@ const TimesheetMonthForm = () => {
   return (
     <div className="space-y-6">
 
-      {/* Header: navigazione mese + badge ore + stato salvataggio */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button onClick={handlePrevMonth} className="p-1 rounded hover:bg-gray-100">
@@ -336,32 +357,38 @@ const TimesheetMonthForm = () => {
             {totalHours}h / {MONTHLY_LIMIT}h
           </span>
         </div>
-        <div className="text-sm">
-          {saveStatus === 'saving' && (
-            <span className="flex items-center gap-1 text-gray-400">
-              <Loader2 className="w-3 h-3 animate-spin" /> Salvataggio...
-            </span>
-          )}
-          {saveStatus === 'saved' && (
-            <span className="flex items-center gap-1 text-green-600">
-              <CheckCircle className="w-3 h-3" /> Salvato
-            </span>
-          )}
-          {saveStatus === 'error' && (
-            <span className="flex items-center gap-1 text-red-500">
-              <AlertCircle className="w-3 h-3" /> Errore nel salvataggio
-            </span>
-          )}
+        <div className="flex items-center gap-3">
+          <div className="text-sm">
+            {saveStatus === 'saving' && (
+              <span className="flex items-center gap-1 text-gray-400">
+                <Loader2 className="w-3 h-3 animate-spin" /> Salvataggio...
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center gap-1 text-green-600">
+                <CheckCircle className="w-3 h-3" /> Salvato
+              </span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="flex items-center gap-1 text-red-500">
+                <AlertCircle className="w-3 h-3" /> Errore
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleSaveNow}
+            disabled={saveStatus === 'saving'}
+            className="px-4 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 font-medium"
+          >
+            Salva
+          </button>
         </div>
       </div>
 
-      {/* Sezione: Ferie & Malattia */}
+      {/* Ferie & Malattia */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Ferie & Malattia</h3>
-        {[
-          { key: 'ferie', label: 'Ferie' },
-          { key: 'malattia', label: 'Malattia' },
-        ].map(({ key, label }) => (
+        {[{ key: 'ferie', label: 'Ferie' }, { key: 'malattia', label: 'Malattia' }].map(({ key, label }) => (
           <div key={key} className="flex items-center gap-3">
             <span className="flex-1 text-sm text-gray-700">{label}</span>
             <input
@@ -374,7 +401,7 @@ const TimesheetMonthForm = () => {
         ))}
       </div>
 
-      {/* Sezione: ISINNOVA */}
+      {/* ISINNOVA */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">ISINNOVA</h3>
         {[
@@ -394,8 +421,7 @@ const TimesheetMonthForm = () => {
         <div className="flex items-center gap-3">
           <span className="flex-1 text-sm text-gray-700">Altro</span>
           <input
-            type="text"
-            placeholder="Nota"
+            type="text" placeholder="Nota"
             className="flex-[2] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
             value={fixedHours.isinnova_altro_note}
             onChange={e => handleFixedChange('isinnova_altro_note', e.target.value)}
@@ -409,7 +435,7 @@ const TimesheetMonthForm = () => {
         </div>
       </div>
 
-      {/* Sezione: Progetti */}
+      {/* Progetti */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Progetti</h3>
         {projectRows.length === 0 && (
@@ -424,10 +450,7 @@ const TimesheetMonthForm = () => {
               value={row.hours}
               onChange={e => handleProjectChange(row.localId, parseFloat(e.target.value) || 0)}
             />
-            <button
-              onClick={() => handleProjectDelete(row.localId)}
-              className="text-gray-400 hover:text-red-500 transition-colors p-1"
-            >
+            <button onClick={() => handleProjectDelete(row.localId)} className="text-gray-400 hover:text-red-500 p-1">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -442,9 +465,7 @@ const TimesheetMonthForm = () => {
             {projects
               .filter(p => !projectRows.find(r => r.projectId === p.id))
               .sort((a, b) => a.name.localeCompare(b.name))
-              .map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))
+              .map(p => <option key={p.id} value={p.id}>{p.name}</option>)
             }
           </select>
           <button
@@ -457,26 +478,81 @@ const TimesheetMonthForm = () => {
         </div>
       </div>
 
-      {/* Sezione: Attività libere */}
+      {/* Attività persistenti */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Attività</h3>
-        {freeRows.length === 0 && (
-          <p className="text-sm text-gray-400">Nessuna attività aggiunta.</p>
+
+        {activities.length === 0 && !showNewActivity && (
+          <p className="text-sm text-gray-400">Nessuna attività in corso.</p>
         )}
-        {freeRows.map(row => (
-          <TimesheetFreeRow
-            key={row.localId}
-            row={row}
-            onChange={handleFreeChange}
-            onDelete={handleFreeDelete}
-          />
-        ))}
-        <button
-          onClick={handleAddFreeRow}
-          className="text-sm text-blue-600 hover:text-blue-800 font-medium mt-1"
-        >
-          + Aggiungi attività
-        </button>
+
+        {activities.map(activity => {
+          const catLabel = ACTIVITY_CATEGORIES.find(c => c.value === activity.activity_type)?.label || activity.activity_type;
+          const ah = activityHours[activity.id] || { timesheetId: null, hours: 0 };
+          return (
+            <div key={activity.id} className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500 w-24 shrink-0">{catLabel}</span>
+              <span className="flex-1 text-sm text-gray-700">{activity.activity_note}</span>
+              <input
+                type="number" min="0" step="0.5"
+                className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-right"
+                value={ah.hours}
+                onChange={e => handleActivityHoursChange(activity.id, parseFloat(e.target.value) || 0)}
+              />
+              <button
+                onClick={() => handleCloseActivity(activity.id)}
+                title="Chiudi attività"
+                className="text-gray-400 hover:text-orange-500 transition-colors p-1"
+              >
+                <Archive className="w-4 h-4" />
+              </button>
+            </div>
+          );
+        })}
+
+        {showNewActivity && (
+          <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+            <select
+              className="w-32 rounded-md border border-gray-300 px-2 py-1.5 text-sm bg-white"
+              value={newActivityType}
+              onChange={e => setNewActivityType(e.target.value)}
+            >
+              {ACTIVITY_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            <input
+              type="text" placeholder="Descrizione attività"
+              className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              value={newActivityNote}
+              onChange={e => setNewActivityNote(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateActivity()}
+              autoFocus
+            />
+            <button
+              onClick={handleCreateActivity}
+              disabled={!newActivityNote.trim()}
+              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+            >
+              Crea
+            </button>
+            <button
+              onClick={() => { setShowNewActivity(false); setNewActivityNote(''); }}
+              className="text-gray-400 hover:text-gray-600 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {!showNewActivity && (
+          <button
+            onClick={() => setShowNewActivity(true)}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            + Nuova attività
+          </button>
+        )}
       </div>
 
     </div>
