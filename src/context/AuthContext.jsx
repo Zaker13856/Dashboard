@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/lib/customSupabaseClient';
+import { supabase, supabaseAdmin } from '@/lib/customSupabaseClient';
 
 const AuthContext = createContext();
 
@@ -128,6 +128,10 @@ export const AuthProvider = ({ children }) => {
     const rate = rates.find(r => r.consultant_id === consultantId && r.year === year);
     return rate?.hourly_rate || 0;
   };
+  const getOreMaxByConsultantAndYear = (consultantId, year) => {
+    const rate = rates.find(r => r.consultant_id === consultantId && r.year === year);
+    return rate?.ore_max || 0;
+  };
   const addConsultant = async ({ name, email, role, status }) => {
     const { data, error } = await supabase
       .from('consultants')
@@ -181,6 +185,57 @@ export const AuthProvider = ({ children }) => {
   const incrementRatesVersion = () => setRatesVersion(v => v + 1);
   const cleanupStaleRatesData = () => {};
 
+  const DEFAULT_RESET_PASSWORD = 'Sistina42@';
+
+  const resetConsultantPassword = async (consultantId) => {
+    const consultant = consultants.find(c => c.id === consultantId);
+    if (!consultant?.auth_user_id) return { error: 'auth_user_id non trovato per questo consulente' };
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(consultant.auth_user_id, {
+      password: DEFAULT_RESET_PASSWORD,
+    });
+    if (error) return { error: error.message };
+    return { success: true };
+  };
+
+  const createAuthForConsultants = async () => {
+    const without = consultants.filter(c => !c.auth_user_id && c.email);
+    const results = [];
+    for (const c of without) {
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: c.email,
+        password: DEFAULT_RESET_PASSWORD,
+        email_confirm: true,
+      });
+      if (error) {
+        results.push({ name: c.name, email: c.email, error: error.message });
+        continue;
+      }
+      const { error: updateError } = await supabase
+        .from('consultants')
+        .update({ auth_user_id: data.user.id })
+        .eq('id', c.id);
+      results.push({
+        name: c.name,
+        email: c.email,
+        auth_user_id: data.user.id,
+        error: updateError?.message || null,
+      });
+    }
+    return results;
+  };
+
+  const resetAllConsultantPasswords = async () => {
+    const withAuth = consultants.filter(c => c.auth_user_id);
+    const results = await Promise.all(
+      withAuth.map(c =>
+        supabaseAdmin.auth.admin.updateUserById(c.auth_user_id, { password: DEFAULT_RESET_PASSWORD })
+      )
+    );
+    const failed = results.filter(r => r.error);
+    if (failed.length > 0) return { success: false, error: `${failed.length} reset falliti` };
+    return { success: true, count: withAuth.length };
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -198,8 +253,12 @@ export const AuthProvider = ({ children }) => {
       upsertRate,
       getConsultantHourlyRate,
       getHourlyRateByConsultantAndYear,
+      getOreMaxByConsultantAndYear,
       incrementRatesVersion,
       cleanupStaleRatesData,
+      resetConsultantPassword,
+      resetAllConsultantPasswords,
+      createAuthForConsultants,
       DEFAULT_PASSWORD: 'password',
     }}>
       {!loading && children}

@@ -6,7 +6,7 @@ const TimesheetContext = createContext();
 
 export const useTimesheet = () => useContext(TimesheetContext);
 
-const MONTHLY_LIMIT = 160;
+const MONTHLY_LIMIT = 143.33;
 const ANNUAL_LIMIT = 1720;
 
 const MONTH_NAMES = [

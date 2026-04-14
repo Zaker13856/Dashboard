@@ -272,7 +272,7 @@ const HourlyRatesManager = () => {
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b">
               <tr>
-                <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-10 border-r w-48">Consulente</th>
+                <th scope="col" className="px-4 py-3 sticky left-0 bg-gray-100 z-20 border-r-2 border-r-gray-300 w-48 shadow-[3px_0_6px_-2px_rgba(0,0,0,0.15)]">Consulente</th>
                 {years.map(year => (
                   <th key={year} scope="col" className="px-2 py-3 text-center min-w-[100px] border-r last:border-0">{year}</th>
                 ))}
@@ -281,7 +281,7 @@ const HourlyRatesManager = () => {
             <tbody className="divide-y divide-gray-100">
               {consultants.map((consultant) => (
                 <tr key={consultant.id} className="bg-white hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900 sticky left-0 bg-white border-r z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  <td className="px-4 py-3 font-medium text-gray-900 sticky left-0 bg-slate-50 border-r-2 border-r-gray-300 z-20 shadow-[3px_0_8px_-2px_rgba(0,0,0,0.18)]">
                     <div className="flex flex-col">
                         <span>{consultant.name}</span>
                         <span className="text-[10px] text-gray-400 font-normal">Base: €{consultant.hourlyRate}</span>
