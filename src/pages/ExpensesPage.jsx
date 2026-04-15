@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet } from 'lucide-react';
+import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/use-toast';
 import * as XLSX from 'xlsx';
 
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -19,6 +22,113 @@ const TYPE_CONFIG = {
   subcontract: { label: 'Subcontract', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: FileText },
 };
 
+// ─── Quick Add Form ──────────────────────────────────────────
+const QuickAddForm = ({ projects, type, onSaved }) => {
+  const { toast } = useToast();
+  const today = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState({ project_id: '', date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '' });
+  const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.project_id || !form.amount || !form.description) {
+      toast({ title: 'Campi obbligatori', description: 'Progetto, descrizione e importo sono richiesti.', variant: 'destructive' });
+      return;
+    }
+    const amt  = parseFloat(form.amount) || 0;
+    const iva  = parseFloat(form.iva) || null;
+    const elig = form.eligible_amount ? parseFloat(form.eligible_amount) : (iva != null ? Math.round((amt - iva) * 100) / 100 : amt);
+
+    const record = {
+      project_id:      form.project_id,
+      type,
+      date:            form.date || null,
+      description:     type === 'subcontract' && form.provider ? `${form.provider}: ${form.description}` : form.description,
+      amount:          amt,
+      place:           type === 'travel' ? (form.place || null) : null,
+      invoice_ref:     form.invoice_ref || null,
+      iva:             iva,
+      eligible_amount: elig,
+    };
+
+    const { error } = await supabase.from('expenses').insert(record);
+    if (error) {
+      toast({ title: 'Errore', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Spesa registrata' });
+    setForm({ project_id: form.project_id, date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '' });
+    onSaved();
+  };
+
+  const labels = {
+    travel:      { title: 'Travel',      color: 'bg-blue-600 hover:bg-blue-700' },
+    other_cost:  { title: 'Other Cost',  color: 'bg-amber-600 hover:bg-amber-700' },
+    subcontract: { title: 'Subcontract', color: 'bg-purple-600 hover:bg-purple-700' },
+  };
+  const cfg = labels[type];
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="space-y-1">
+        <Label className="text-xs font-semibold text-gray-500">Progetto *</Label>
+        <Select value={form.project_id} onValueChange={v => f('project_id', v)}>
+          <SelectTrigger><SelectValue placeholder="Seleziona progetto" /></SelectTrigger>
+          <SelectContent>
+            {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Data</Label>
+          <Input type="date" value={form.date} onChange={e => f('date', e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Importo € *</Label>
+          <Input type="number" step="0.01" placeholder="0.00" className="font-bold" value={form.amount} onChange={e => f('amount', e.target.value)} required />
+        </div>
+      </div>
+
+      {type === 'travel' && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Luogo</Label>
+          <Input placeholder="es. Dublino, Bruxelles..." value={form.place} onChange={e => f('place', e.target.value)} />
+        </div>
+      )}
+
+      {type === 'subcontract' && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Fornitore *</Label>
+          <Input placeholder="es. Acme Corp, Mario Rossi..." value={form.provider} onChange={e => f('provider', e.target.value)} required />
+        </div>
+      )}
+
+      <div className="space-y-1">
+        <Label className="text-xs font-semibold text-gray-500">Descrizione *</Label>
+        <Input placeholder={type === 'travel' ? "es. Missione WP3 meeting" : type === 'subcontract' ? "es. Consulenza legale" : "es. Licenza software, hosting..."} value={form.description} onChange={e => f('description', e.target.value)} required />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">IVA €</Label>
+          <Input type="number" step="0.01" placeholder="0.00" value={form.iva} onChange={e => f('iva', e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Rif. Fattura</Label>
+          <Input placeholder="es. fatt. 123/2026" value={form.invoice_ref} onChange={e => f('invoice_ref', e.target.value)} />
+        </div>
+      </div>
+
+      <Button type="submit" className={cn("w-full text-white", cfg.color)}>
+        Registra {cfg.title}
+      </Button>
+    </form>
+  );
+};
+
+// ─── Main Page ───────────────────────────────────────────────
 const ExpensesPage = () => {
   const [expenses,  setExpenses]  = useState([]);
   const [projects,  setProjects]  = useState([]);
@@ -26,18 +136,17 @@ const ExpensesPage = () => {
   const [search,    setSearch]    = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      const [{ data: exp }, { data: prj }] = await Promise.all([
-        supabase.from('expenses').select('*').order('date', { ascending: false }),
-        supabase.from('projects').select('id, name'),
-      ]);
-      setExpenses(exp || []);
-      setProjects(prj || []);
-      setLoading(false);
-    };
-    fetchAll();
+  const fetchAll = useCallback(async () => {
+    const [{ data: exp }, { data: prj }] = await Promise.all([
+      supabase.from('expenses').select('*').order('date', { ascending: false }),
+      supabase.from('projects').select('id, name').order('name'),
+    ]);
+    setExpenses(exp || []);
+    setProjects(prj || []);
+    setLoading(false);
   }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const projectMap = useMemo(() => {
     const m = {};
@@ -153,6 +262,32 @@ const ExpensesPage = () => {
             </Card>
           ))}
         </div>
+
+        {/* Aggiungi spesa */}
+        <Card className="border-gray-200 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <PlusCircle className="w-5 h-5 text-gray-600" />
+              <h3 className="font-bold text-gray-900">Aggiungi Spesa</h3>
+            </div>
+            <Tabs defaultValue="travel" className="w-full">
+              <TabsList className="bg-gray-100 p-1 w-full sm:w-auto">
+                <TabsTrigger value="travel" className="flex-1 gap-1"><Plane className="w-3 h-3" />Travel</TabsTrigger>
+                <TabsTrigger value="other_cost" className="flex-1 gap-1"><Receipt className="w-3 h-3" />Other Cost</TabsTrigger>
+                <TabsTrigger value="subcontract" className="flex-1 gap-1"><Briefcase className="w-3 h-3" />Subcontract</TabsTrigger>
+              </TabsList>
+              <TabsContent value="travel" className="mt-4">
+                <QuickAddForm projects={projects} type="travel" onSaved={fetchAll} />
+              </TabsContent>
+              <TabsContent value="other_cost" className="mt-4">
+                <QuickAddForm projects={projects} type="other_cost" onSaved={fetchAll} />
+              </TabsContent>
+              <TabsContent value="subcontract" className="mt-4">
+                <QuickAddForm projects={projects} type="subcontract" onSaved={fetchAll} />
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
 
         {/* Filtri */}
         <div className="flex flex-col sm:flex-row gap-3 items-center">
