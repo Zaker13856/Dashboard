@@ -4,10 +4,13 @@ import { useTimesheet } from '@/context/TimesheetContext';
 import { useProjectFinancials } from '@/hooks/useProjectFinancials';
 import AdminLayout from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, Clock, PieChart, TrendingUp, Euro, Briefcase } from 'lucide-react';
+import { Activity, Clock, PieChart, TrendingUp, Euro, Briefcase, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/customSupabaseClient';
+
+const MU_HOURS = 143.33;
+const fmtMU = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(n || 0);
 
 const AdminDashboard = () => {
   const { consultants } = useAuth();
@@ -17,18 +20,36 @@ const AdminDashboard = () => {
   const currentYear = new Date().getFullYear();
 
   const [hoursData, setHoursData] = useState({ planned: 0, sold: 0 });
+  const [muData,    setMuData]    = useState({ venduti: 0, pianificati: 0 });
 
   useEffect(() => {
     const fetchHours = async () => {
-      const [{ data: rates }, { data: allocs }] = await Promise.all([
+      const [{ data: rates }, { data: allocs }, { data: projectsDB }] = await Promise.all([
         supabase.from('consultant_rates').select('ore_max').eq('year', currentYear),
         supabase.from('allocations').select('allocated_hours, project_periods(year, projects(is_lump_sum))'),
+        supabase.from('projects').select('sold_person_months, is_lump_sum'),
       ]);
+
+      // Ore pianificate anno corrente (da ore_max consulenti)
       const planned = (rates || []).reduce((sum, r) => sum + (parseFloat(r.ore_max) || 0), 0);
+
+      // Ore allocate anno corrente — escludi Lump Sum
       const sold = (allocs || [])
         .filter(a => a.project_periods?.year === currentYear && !a.project_periods?.projects?.is_lump_sum)
         .reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0);
+
       setHoursData({ planned, sold });
+
+      // MU: intero periodo, tutti gli anni — escludi Lump Sum
+      const muVenduti = (projectsDB || [])
+        .filter(p => !p.is_lump_sum)
+        .reduce((sum, p) => sum + (parseFloat(p.sold_person_months) || 0), 0);
+
+      const muPianificati = (allocs || [])
+        .filter(a => !a.project_periods?.projects?.is_lump_sum)
+        .reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0) / MU_HOURS;
+
+      setMuData({ venduti: muVenduti, pianificati: muPianificati });
     };
     fetchHours();
   }, [currentYear]);
@@ -54,6 +75,13 @@ const AdminDashboard = () => {
   if (allocationPercentage > 90) progressColor = "bg-red-500";
   else if (allocationPercentage > 70) progressColor = "bg-yellow-500";
 
+  const muPercentage = muData.venduti > 0
+    ? (muData.pianificati / muData.venduti) * 100
+    : 0;
+  let muProgressColor = "bg-green-500";
+  if (muPercentage > 100) muProgressColor = "bg-red-500";
+  else if (muPercentage > 85) muProgressColor = "bg-yellow-500";
+
   const totalPortfolioBudget = useMemo(() =>
     projects.reduce((sum, p) => sum + (parseFloat(p.total_value || p.totalValue || p.budget) || 0), 0),
   [projects]);
@@ -75,7 +103,7 @@ const AdminDashboard = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6"
         >
           {/* Card 1: Ore lavorate */}
           <Card className="bg-white border-gray-100 shadow-lg rounded-xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
@@ -100,7 +128,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Card 2: Ore pianificate */}
+          {/* Card 2: Ore pianificate anno corrente */}
           <Card className="bg-white border-gray-100 shadow-lg rounded-xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
@@ -129,7 +157,38 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Card 3: Progetti */}
+          {/* Card 3: Mesi Uomo — intero periodo */}
+          <Card className="bg-white border-gray-100 shadow-lg rounded-xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-teal-100 rounded-xl"><Users className="w-6 h-6 text-teal-600" /></div>
+                <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-1 rounded-full">Intero Periodo</span>
+              </div>
+              <div className="mb-3">
+                <p className="text-sm text-gray-500 font-medium">MU Venduti / Pianificati</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-2xl font-bold text-gray-900">{fmtMU(muData.pianificati)}</h3>
+                  <span className="text-xs text-gray-400">/ {fmtMU(muData.venduti)} MU</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-600 font-medium">{muPercentage.toFixed(1)}% Pianificato</span>
+                  <span className={cn("font-medium", muData.venduti - muData.pianificati < 0 ? "text-red-500" : "text-gray-400")}>
+                    {fmtMU(Math.abs(muData.venduti - muData.pianificati))} MU {muData.venduti - muData.pianificati >= 0 ? 'disponibili' : 'in eccesso'}
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full transition-all duration-500", muProgressColor)}
+                    style={{ width: `${Math.min(muPercentage, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 4: Progetti */}
           <Card className="bg-white border-gray-100 shadow-lg rounded-xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
@@ -143,7 +202,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Card 4: Valore portfolio */}
+          {/* Card 5: Valore portfolio */}
           <Card className="bg-white border-gray-100 shadow-lg rounded-xl hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
