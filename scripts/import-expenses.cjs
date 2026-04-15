@@ -96,72 +96,70 @@ async function main() {
   console.log(`📋 Righe da importare: ${dataRows.length}`);
 
   // 4. Costruisci i record da inserire
-  // Colonne: 0=CostItem, 1=PlaceInvoice, 2=Date, 3=Travel, 4=Other,
+  // Colonne: 0=CostItem, 1=Place/InvoiceNum, 2=Date, 3=Travel, 4=Other,
   //          5=TotalCosts, 6=IVA, 7=EligibleCosts, 8=PaymentDate
   const records = [];
 
   for (const row of dataRows) {
     const description  = String(row[0]).trim();
-    const invoice_ref  = String(row[1]).trim() || null;
-    const date         = toDate(row[2]);
+    const col1         = String(row[1]).trim() || null;
+    const rawDate      = String(row[2]).trim();       // stringa originale es. "10-12/12/2025"
+    const date         = toDate(row[2]);              // data inizio (o unica data)
     const travel       = n(row[3]);
     const other        = n(row[4]);
     const iva          = n(row[6]);
     const eligible     = n(row[7]);
     const payment_date = toDate(row[8]);
 
+    // Per i viaggi: col1 = luogo (es. "Dublino")
+    // Per other cost: col1 = numero fattura (es. "fatt. 8325/2026")
+    const place       = travel ? col1 : null;
+    const invoice_ref = !travel ? col1 : null;
+
+    // Etichetta data originale (preserva range tipo "10-12/12/2025")
+    const date_label  = typeof row[2] === 'string' ? rawDate : null;
+
     const totalAmount = (travel || 0) + (other || 0);
 
+    const base = {
+      project_id:      project.id,
+      date,
+      date_label,
+      place,
+      invoice_ref,
+      iva,
+      eligible_amount: eligible,
+      payment_date,
+    };
+
     if (travel && !other) {
-      // Solo travel
-      records.push({
-        project_id:      project.id,
-        type:            'travel',
-        description,
-        invoice_ref,
-        date,
-        amount:          travel,
-        iva:             iva,
-        eligible_amount: eligible,
-        payment_date,
-      });
+      records.push({ ...base, type: 'travel', description, amount: travel });
+
     } else if (other && !travel) {
-      // Solo other cost
-      records.push({
-        project_id:      project.id,
-        type:            'other_cost',
-        description,
-        invoice_ref,
-        date,
-        amount:          other,
-        iva:             iva,
-        eligible_amount: eligible,
-        payment_date,
-      });
+      records.push({ ...base, type: 'other_cost', description, amount: other });
+
     } else if (travel && other) {
       // Entrambi → due record, IVA ripartita proporzionalmente
       const ratio = travel / totalAmount;
       records.push({
-        project_id:      project.id,
+        ...base,
         type:            'travel',
         description:     `${description} [travel]`,
-        invoice_ref,
-        date,
+        place:           col1,
+        invoice_ref:     null,
         amount:          travel,
         iva:             iva != null ? Math.round(iva * ratio * 100) / 100 : null,
         eligible_amount: eligible != null ? Math.round(eligible * ratio * 100) / 100 : null,
-        payment_date,
       });
       records.push({
-        project_id:      project.id,
+        ...base,
         type:            'other_cost',
         description:     `${description} [other]`,
-        invoice_ref,
-        date,
+        place:           null,
+        invoice_ref:     null,
         amount:          other,
         iva:             iva != null ? Math.round(iva * (1 - ratio) * 100) / 100 : null,
         eligible_amount: eligible != null ? Math.round(eligible * (1 - ratio) * 100) / 100 : null,
-        payment_date,
       });
     }
   }
@@ -169,7 +167,9 @@ async function main() {
   // 5. Mostra anteprima
   console.log('\n📝 Anteprima record da inserire:');
   records.forEach((r, i) => {
-    console.log(`  ${i+1}. [${r.type}] ${r.description} | ${r.date} | €${r.amount} | IVA:${r.iva ?? '—'} | Ammissibile:${r.eligible_amount ?? '—'}`);
+    const luogo = r.place ? `📍${r.place}` : r.invoice_ref ? `🧾${r.invoice_ref}` : '';
+    const data  = r.date_label || r.date || '—';
+    console.log(`  ${i+1}. [${r.type}] ${r.description} | ${data} ${luogo} | €${r.amount} | IVA:${r.iva ?? '—'} | Ammissibile:${r.eligible_amount ?? '—'}`);
   });
 
   // 6. Inserisci su Supabase
