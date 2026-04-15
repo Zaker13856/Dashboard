@@ -7,7 +7,11 @@ const customSupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 export default customSupabaseClient;
 
-export { 
+// supabaseAdmin: per operazioni admin auth (richiede service_role key in produzione)
+// Usa lo stesso client per ora — le chiamate admin.auth.* funzioneranno solo se
+// il progetto Supabase ha auth.enable_signup = false oppure con service_role key
+export {
     customSupabaseClient,
     customSupabaseClient as supabase,
+    customSupabaseClient as supabaseAdmin,
 };

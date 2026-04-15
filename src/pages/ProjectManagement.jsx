@@ -24,6 +24,7 @@ const EMPTY_FORM = {
   start_date: '', end_date: '', sold_person_months: '',
   total_value: '', overhead_rate: '0.25', description: '',
   sold_travel: '', sold_other_costs: '', sold_subcontracting: '', sold_third_parties: '',
+  is_lump_sum: false,
 };
 
 const fmt  = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -269,6 +270,7 @@ const ProjectFormDialog = ({ open, onOpenChange, initial, onSave, title, trigger
       sold_other_costs:    form.sold_other_costs    ? parseFloat(form.sold_other_costs)    : null,
       sold_subcontracting: form.sold_subcontracting ? parseFloat(form.sold_subcontracting) : null,
       sold_third_parties:  form.sold_third_parties  ? parseFloat(form.sold_third_parties)  : null,
+      is_lump_sum:         !!form.is_lump_sum,
     };
     await onSave(payload);
   };
@@ -366,6 +368,20 @@ const ProjectFormDialog = ({ open, onOpenChange, initial, onSave, title, trigger
             Durata calcolata: {computeDurationMonths(form.start_date, form.end_date)} mesi
           </p>
         )}
+
+        <div className="flex items-center gap-3 pt-1">
+          <input
+            type="checkbox"
+            id="is_lump_sum"
+            checked={!!form.is_lump_sum}
+            onChange={e => f('is_lump_sum', e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
+          />
+          <label htmlFor="is_lump_sum" className="text-sm text-gray-700 cursor-pointer select-none">
+            Progetto <span className="font-semibold text-purple-700">Lump Sum</span>
+            <span className="ml-2 text-xs text-gray-400">(forfait fisso — escluso dai totali MU/ore pianificate)</span>
+          </label>
+        </div>
 
         <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 mt-2 text-white">{title}</Button>
       </div>
@@ -705,6 +721,7 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
     sold_other_costs:    project.sold_other_costs    != null ? String(project.sold_other_costs)    : '',
     sold_subcontracting: project.sold_subcontracting != null ? String(project.sold_subcontracting) : '',
     sold_third_parties:  project.sold_third_parties  != null ? String(project.sold_third_parties)  : '',
+    is_lump_sum:         !!project.is_lump_sum,
   };
 
   if (loading) return <div className="text-center py-20 text-gray-400 text-sm">Caricamento dati progetto...</div>;
@@ -721,6 +738,11 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
               <span className={cn("text-xs px-2 py-1 rounded-full font-medium", STATUS_COLORS[project.status] || STATUS_COLORS.active)}>
                 {project.status}
               </span>
+              {project.is_lump_sum && (
+                <span className="text-xs px-2 py-1 rounded-full font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                  LUMP SUM
+                </span>
+              )}
               <Button
                 size="sm" variant="outline"
                 className="h-7 px-2 text-xs text-gray-600 border-gray-200 hover:bg-gray-50"
@@ -843,21 +865,36 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
         </DialogContent>
       </Dialog>
 
-      {/* Planning Gauge */}
-      <PlanningGauge
-        soldMU={project.sold_person_months}
-        plannedMU={totals.totMU}
-        soldValue={project.total_value}
-        plannedValue={totals.costiPersonale}
-        soldTravel={project.sold_travel}
-        plannedTravel={totals.travel}
-        soldOther={project.sold_other_costs}
-        plannedOther={totals.otherCosts}
-        soldSubcontr={project.sold_subcontracting}
-        plannedSubcontr={totals.subcontr}
-        soldThirdParties={project.sold_third_parties}
-        plannedThirdParties={totals.thirdParties}
-      />
+      {/* Planning Gauge — nascosto per Lump Sum */}
+      {project.is_lump_sum ? (
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3 text-sm text-purple-700 bg-purple-50 rounded-lg">
+            <span className="text-lg">🔒</span>
+            <div>
+              <p className="font-semibold">Progetto Lump Sum — forfait fisso</p>
+              <p className="text-xs text-purple-500 mt-0.5">
+                Le ore pianificate e i MU venduti non vengono conteggiati nei totali di portafoglio.
+                Le ore reali dei consulenti vengono comunque registrate.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <PlanningGauge
+          soldMU={project.sold_person_months}
+          plannedMU={totals.totMU}
+          soldValue={project.total_value}
+          plannedValue={totals.costiPersonale}
+          soldTravel={project.sold_travel}
+          plannedTravel={totals.travel}
+          soldOther={project.sold_other_costs}
+          plannedOther={totals.otherCosts}
+          soldSubcontr={project.sold_subcontracting}
+          plannedSubcontr={totals.subcontr}
+          soldThirdParties={project.sold_third_parties}
+          plannedThirdParties={totals.thirdParties}
+        />
+      )}
 
       {/* Table */}
       {periods.length === 0 ? (
@@ -1058,13 +1095,24 @@ const ProjectManagement = () => {
                 {filtered.map(p => (
                   <motion.div key={p.id} whileHover={{ x: 2 }} onClick={() => setSelected(p)}>
                     <Card className={cn("cursor-pointer border-l-4 transition-all",
-                      selected?.id === p.id ? "border-blue-500 bg-blue-50 shadow-sm" : "border-gray-200 hover:border-gray-300")}>
+                      selected?.id === p.id
+                        ? "border-blue-500 bg-blue-50 shadow-sm"
+                        : p.is_lump_sum
+                          ? "border-purple-300 hover:border-purple-400"
+                          : "border-gray-200 hover:border-gray-300")}>
                       <CardContent className="p-3">
                         <p className="font-semibold text-sm text-gray-900 truncate">{p.name}</p>
-                        <div className="flex items-center justify-between mt-1.5">
-                          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", STATUS_COLORS[p.status] || STATUS_COLORS.active)}>
-                            {p.status}
-                          </span>
+                        <div className="flex items-center justify-between mt-1.5 gap-1 flex-wrap">
+                          <div className="flex items-center gap-1">
+                            <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", STATUS_COLORS[p.status] || STATUS_COLORS.active)}>
+                              {p.status}
+                            </span>
+                            {p.is_lump_sum && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-purple-100 text-purple-600 border border-purple-200">
+                                LS
+                              </span>
+                            )}
+                          </div>
                           {selected?.id === p.id && <ChevronRight className="w-3 h-3 text-blue-500" />}
                         </div>
                       </CardContent>

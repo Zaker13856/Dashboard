@@ -24,7 +24,7 @@ const ReportsPage = () => {
 
     const [{ data: cons }, { data: allocs }, { data: rates }] = await Promise.all([
       supabase.from('consultants').select('id, name').order('name'),
-      supabase.from('allocations').select('consultant_id, allocated_hours, project_periods(year)'),
+      supabase.from('allocations').select('consultant_id, allocated_hours, project_periods(year, projects(is_lump_sum))'),
       supabase.from('consultant_rates').select('consultant_id, year, ore_max'),
     ]);
 
@@ -40,6 +40,7 @@ const ReportsPage = () => {
     for (const a of (allocs || [])) {
       const year = a.project_periods?.year;
       if (!year) continue;
+      if (a.project_periods?.projects?.is_lump_sum) continue; // Lump Sum: ore escluse dai totali
       if (!mat[year]) mat[year] = {};
       if (!mat[year][a.consultant_id]) mat[year][a.consultant_id] = { ore_allocate: 0, ore_max: 0 };
       mat[year][a.consultant_id].ore_allocate += parseFloat(a.allocated_hours) || 0;

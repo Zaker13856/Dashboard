@@ -22,11 +22,11 @@ const AdminDashboard = () => {
     const fetchHours = async () => {
       const [{ data: rates }, { data: allocs }] = await Promise.all([
         supabase.from('consultant_rates').select('ore_max').eq('year', currentYear),
-        supabase.from('allocations').select('allocated_hours, project_periods(year)'),
+        supabase.from('allocations').select('allocated_hours, project_periods(year, projects(is_lump_sum))'),
       ]);
       const planned = (rates || []).reduce((sum, r) => sum + (parseFloat(r.ore_max) || 0), 0);
       const sold = (allocs || [])
-        .filter(a => a.project_periods?.year === currentYear)
+        .filter(a => a.project_periods?.year === currentYear && !a.project_periods?.projects?.is_lump_sum)
         .reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0);
       setHoursData({ planned, sold });
     };
