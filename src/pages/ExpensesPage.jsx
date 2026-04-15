@@ -7,8 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText } from 'lucide-react';
+import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import * as XLSX from 'xlsx';
 
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
@@ -91,6 +92,36 @@ const ExpensesPage = () => {
     if (!window.confirm('Eliminare questa spesa?')) return;
     const { error } = await supabase.from('expenses').delete().eq('id', id);
     if (!error) setExpenses(prev => prev.filter(e => e.id !== id));
+  };
+
+  const exportToXLS = (projectName, items) => {
+    const header = ['Data', 'Luogo', 'Descrizione', 'Tipo', 'Importo €', 'IVA €', 'Ammissibile €', 'Fattura', 'Pagato il'];
+    const rows = items.map(e => [
+      e.date_label || (e.date ? new Date(e.date).toLocaleDateString('it-IT') : ''),
+      e.place || '',
+      e.description || '',
+      (TYPE_CONFIG[e.type] || {}).label || e.type,
+      parseFloat(e.amount) || 0,
+      parseFloat(e.iva) || 0,
+      parseFloat(e.eligible_amount) || 0,
+      e.invoice_ref || '',
+      e.payment_date ? new Date(e.payment_date).toLocaleDateString('it-IT') : '',
+    ]);
+    // Riga totale
+    const totAmt  = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const totIva  = items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
+    const totElig = items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+    rows.push(['TOTALE', '', '', '', totAmt, totIva, totElig, '', '']);
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    // Larghezze colonne
+    ws['!cols'] = [
+      { wch: 18 }, { wch: 14 }, { wch: 30 }, { wch: 12 },
+      { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 14 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Spese');
+    XLSX.writeFile(wb, `Spese_${projectName.replace(/\s+/g, '_')}.xlsx`);
   };
 
   return (
@@ -182,6 +213,16 @@ const ExpensesPage = () => {
                       </div>
                     </div>
                   </AccordionTrigger>
+                  <div className="flex justify-end px-5 -mt-2 mb-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs text-gray-600 border-gray-200 hover:bg-gray-50"
+                      onClick={(e) => { e.stopPropagation(); exportToXLS(group.name, group.items); }}
+                    >
+                      <FileSpreadsheet className="w-3 h-3 mr-1" />Excel
+                    </Button>
+                  </div>
                   <AccordionContent className="px-2 pb-3">
                     <div className="overflow-x-auto rounded-lg border border-gray-200">
                       <table className="w-full text-xs">
