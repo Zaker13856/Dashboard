@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog } from 'lucide-react';
+import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import * as XLSX from 'xlsx';
@@ -17,9 +17,10 @@ import * as XLSX from 'xlsx';
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
 const TYPE_CONFIG = {
-  travel:      { label: 'Travel',     color: 'bg-blue-100 text-blue-700 border-blue-200',   icon: Plane },
-  other_cost:  { label: 'Other Cost', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Receipt },
-  subcontract: { label: 'Subcontract', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: FileText },
+  travel:        { label: 'Travel',      color: 'bg-blue-100 text-blue-700 border-blue-200',     icon: Plane },
+  other_cost:    { label: 'Other Cost',  color: 'bg-amber-100 text-amber-700 border-amber-200',  icon: Receipt },
+  subcontract:   { label: 'Subcontract', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: FileText },
+  third_parties: { label: '3rd Parties', color: 'bg-pink-100 text-pink-700 border-pink-200',     icon: Users },
 };
 
 // ─── Quick Add Form ──────────────────────────────────────────
@@ -43,7 +44,7 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
       project_id:      form.project_id,
       type,
       date:            form.date || null,
-      description:     type === 'subcontract' && form.provider ? `${form.provider}: ${form.description}` : form.description,
+      description:     ((type === 'subcontract' || type === 'third_parties') && form.provider) ? `${form.provider}: ${form.description}` : form.description,
       amount:          amt,
       place:           type === 'travel' ? (form.place || null) : null,
       invoice_ref:     form.invoice_ref || null,
@@ -62,9 +63,10 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
   };
 
   const labels = {
-    travel:      { title: 'Travel',      color: 'bg-blue-600 hover:bg-blue-700' },
-    other_cost:  { title: 'Other Cost',  color: 'bg-amber-600 hover:bg-amber-700' },
-    subcontract: { title: 'Subcontract', color: 'bg-purple-600 hover:bg-purple-700' },
+    travel:        { title: 'Travel',      color: 'bg-blue-600 hover:bg-blue-700' },
+    other_cost:    { title: 'Other Cost',  color: 'bg-amber-600 hover:bg-amber-700' },
+    subcontract:   { title: 'Subcontract', color: 'bg-purple-600 hover:bg-purple-700' },
+    third_parties: { title: '3rd Parties', color: 'bg-pink-600 hover:bg-pink-700' },
   };
   const cfg = labels[type];
 
@@ -98,7 +100,7 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
         </div>
       )}
 
-      {type === 'subcontract' && (
+      {(type === 'subcontract' || type === 'third_parties') && (
         <div className="space-y-1">
           <Label className="text-xs font-semibold text-gray-500">Fornitore *</Label>
           <Input placeholder="es. Acme Corp, Mario Rossi..." value={form.provider} onChange={e => f('provider', e.target.value)} required />
@@ -107,7 +109,7 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
 
       <div className="space-y-1">
         <Label className="text-xs font-semibold text-gray-500">Descrizione *</Label>
-        <Input placeholder={type === 'travel' ? "es. Missione WP3 meeting" : type === 'subcontract' ? "es. Consulenza legale" : "es. Licenza software, hosting..."} value={form.description} onChange={e => f('description', e.target.value)} required />
+        <Input placeholder={type === 'travel' ? "es. Missione WP3 meeting" : type === 'subcontract' ? "es. Consulenza legale" : type === 'third_parties' ? "es. Prestazione terza parte" : "es. Licenza software, hosting..."} value={form.description} onChange={e => f('description', e.target.value)} required />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -184,15 +186,13 @@ const ExpensesPage = () => {
 
   // Totali globali
   const totals = useMemo(() => {
-    const t = { travel: 0, other: 0, iva: 0, eligible: 0 };
+    const t = { travel: 0, other: 0, subcontract: 0, third_parties: 0 };
     filtered.forEach(e => {
       const amt = parseFloat(e.amount) || 0;
-      const iva = parseFloat(e.iva) || 0;
-      const elig = parseFloat(e.eligible_amount) || 0;
-      if (e.type === 'travel') t.travel += amt;
-      else t.other += amt;
-      t.iva += iva;
-      t.eligible += elig;
+      if (e.type === 'travel')             t.travel        += amt;
+      else if (e.type === 'subcontract')   t.subcontract   += amt;
+      else if (e.type === 'third_parties') t.third_parties += amt;
+      else                                 t.other         += amt;
     });
     return t;
   }, [filtered]);
@@ -244,10 +244,10 @@ const ExpensesPage = () => {
         {/* KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Travel',     value: totals.travel,   icon: Plane,   color: 'bg-blue-50 text-blue-700' },
-            { label: 'Other Cost', value: totals.other,    icon: Receipt, color: 'bg-amber-50 text-amber-700' },
-            { label: 'IVA (non amm.)', value: totals.iva,  icon: Euro,    color: 'bg-red-50 text-red-600' },
-            { label: 'Tot. Ammissibile', value: totals.eligible, icon: Euro, color: 'bg-green-50 text-green-700' },
+            { label: 'Travel',      value: totals.travel,        icon: Plane,    color: 'bg-blue-50 text-blue-700' },
+            { label: 'Other Cost',  value: totals.other,         icon: Receipt,  color: 'bg-amber-50 text-amber-700' },
+            { label: 'Subcontract', value: totals.subcontract,   icon: FileText, color: 'bg-purple-50 text-purple-700' },
+            { label: '3rd Parties', value: totals.third_parties, icon: Users,    color: 'bg-pink-50 text-pink-700' },
           ].map(({ label, value, icon: Icon, color }) => (
             <Card key={label} className="border-gray-100 shadow-sm">
               <CardContent className="p-4 flex items-center gap-3">
@@ -275,6 +275,7 @@ const ExpensesPage = () => {
                 <TabsTrigger value="travel" className="flex-1 gap-1"><Plane className="w-3 h-3" />Travel</TabsTrigger>
                 <TabsTrigger value="other_cost" className="flex-1 gap-1"><Receipt className="w-3 h-3" />Other Cost</TabsTrigger>
                 <TabsTrigger value="subcontract" className="flex-1 gap-1"><Briefcase className="w-3 h-3" />Subcontract</TabsTrigger>
+                <TabsTrigger value="third_parties" className="flex-1 gap-1"><Users className="w-3 h-3" />3rd Parties</TabsTrigger>
               </TabsList>
               <TabsContent value="travel" className="mt-4">
                 <QuickAddForm projects={projects} type="travel" onSaved={fetchAll} />
@@ -284,6 +285,9 @@ const ExpensesPage = () => {
               </TabsContent>
               <TabsContent value="subcontract" className="mt-4">
                 <QuickAddForm projects={projects} type="subcontract" onSaved={fetchAll} />
+              </TabsContent>
+              <TabsContent value="third_parties" className="mt-4">
+                <QuickAddForm projects={projects} type="third_parties" onSaved={fetchAll} />
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -309,6 +313,7 @@ const ExpensesPage = () => {
               <SelectItem value="travel">Travel</SelectItem>
               <SelectItem value="other_cost">Other Cost</SelectItem>
               <SelectItem value="subcontract">Subcontract</SelectItem>
+              <SelectItem value="third_parties">3rd Parties</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-xs text-gray-400 whitespace-nowrap">{filtered.length} record</span>
@@ -324,8 +329,11 @@ const ExpensesPage = () => {
         ) : (
           <Accordion type="multiple" defaultValue={grouped.map(g => g.id)} className="space-y-3">
             {grouped.map(group => {
-              const gTravel   = group.items.filter(e => e.type === 'travel').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              const gOther    = group.items.filter(e => e.type !== 'travel').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const sumByType = t => group.items.filter(e => e.type === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const gTravel   = sumByType('travel');
+              const gOther    = sumByType('other_cost');
+              const gSub      = sumByType('subcontract');
+              const gThird    = sumByType('third_parties');
               const gEligible = group.items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
 
               return (
@@ -343,7 +351,9 @@ const ExpensesPage = () => {
                       </div>
                       <div className="flex items-center gap-4 text-xs">
                         {gTravel > 0 && <span className="text-blue-600 font-semibold">Travel: € {fmt(gTravel)}</span>}
-                        {gOther > 0 && <span className="text-amber-600 font-semibold">Other: € {fmt(gOther)}</span>}
+                        {gOther  > 0 && <span className="text-amber-600 font-semibold">Other: € {fmt(gOther)}</span>}
+                        {gSub    > 0 && <span className="text-purple-600 font-semibold">Sub: € {fmt(gSub)}</span>}
+                        {gThird  > 0 && <span className="text-pink-600 font-semibold">3rd: € {fmt(gThird)}</span>}
                         <span className="text-green-700 font-bold">Amm: € {fmt(gEligible)}</span>
                       </div>
                     </div>
