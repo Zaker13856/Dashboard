@@ -276,9 +276,9 @@ const ProjectFormDialog = ({ open, onOpenChange, initial, onSave, title, trigger
   };
 
   const content = (
-    <DialogContent className="sm:max-w-[560px]">
+    <DialogContent className="sm:max-w-[520px] max-h-[90vh] flex flex-col overflow-hidden">
       <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-      <div className="grid gap-4 py-4">
+      <div className="grid gap-3 py-3 overflow-y-auto flex-1 pr-1">
 
         <div className="space-y-1.5">
           <Label className="text-gray-700 font-medium">Nome *</Label>
@@ -383,7 +383,9 @@ const ProjectFormDialog = ({ open, onOpenChange, initial, onSave, title, trigger
           </label>
         </div>
 
-        <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 mt-2 text-white">{title}</Button>
+      </div>
+      <div className="pt-3 border-t border-gray-100">
+        <Button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white">{title}</Button>
       </div>
     </DialogContent>
   );
