@@ -71,7 +71,7 @@ const ProjectExpensesGroupedView = () => {
                 </td>
                 <td className="p-2 text-gray-700 text-xs">
                   <div className="font-medium truncate max-w-[180px]" title={item.description}>{item.description}</div>
-                  {item.category === 'Consultant' && <span className="text-[10px] text-gray-400 block">{item.consultantName}</span>}
+                  {(item.consultant_name || item.consultantName) && <span className="text-[10px] text-gray-500 block">{item.consultant_name || item.consultantName}</span>}
                 </td>
                 <td className="p-2 pr-3 text-right font-medium text-gray-900 text-xs">{formatCurrency(item.amount)}</td>
               </tr>

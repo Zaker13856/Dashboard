@@ -140,7 +140,7 @@ const ExpensesPage = () => {
 
   const fetchAll = useCallback(async () => {
     const [{ data: exp }, { data: prj }] = await Promise.all([
-      supabase.from('expenses').select('*').order('date', { ascending: false }),
+      supabase.from('expenses').select('*, consultant:consultants(name)').order('date', { ascending: false }),
       supabase.from('projects').select('id, name').order('name'),
     ]);
     setExpenses(exp || []);
@@ -204,29 +204,28 @@ const ExpensesPage = () => {
   };
 
   const exportToXLS = (projectName, items) => {
-    const header = ['Data', 'Luogo', 'Descrizione', 'Tipo', 'Importo €', 'IVA €', 'Ammissibile €', 'Fattura', 'Pagato il'];
+    const header = ['Data', 'Luogo', 'Descrizione', 'Tipo', 'Consulente', 'Importo €', 'IVA €', 'Ammissibile €'];
     const rows = items.map(e => [
       e.date_label || (e.date ? new Date(e.date).toLocaleDateString('it-IT') : ''),
       e.place || '',
       e.description || '',
       (TYPE_CONFIG[e.type] || {}).label || e.type,
+      e.consultant?.name || e.consultant_name || '',
       parseFloat(e.amount) || 0,
       parseFloat(e.iva) || 0,
       parseFloat(e.eligible_amount) || 0,
-      e.invoice_ref || '',
-      e.payment_date ? new Date(e.payment_date).toLocaleDateString('it-IT') : '',
     ]);
     // Riga totale
     const totAmt  = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
     const totIva  = items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
     const totElig = items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
-    rows.push(['TOTALE', '', '', '', totAmt, totIva, totElig, '', '']);
+    rows.push(['TOTALE', '', '', '', '', totAmt, totIva, totElig]);
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
     // Larghezze colonne
     ws['!cols'] = [
       { wch: 18 }, { wch: 14 }, { wch: 30 }, { wch: 12 },
-      { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 14 },
+      { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Spese');
@@ -327,7 +326,7 @@ const ExpensesPage = () => {
             Nessuna spesa trovata.
           </div>
         ) : (
-          <Accordion type="multiple" defaultValue={grouped.map(g => g.id)} className="space-y-3">
+          <Accordion type="multiple" className="space-y-3">
             {grouped.map(group => {
               const sumByType = t => group.items.filter(e => e.type === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
               const gTravel   = sumByType('travel');
@@ -377,11 +376,10 @@ const ExpensesPage = () => {
                             <th className="px-3 py-2 text-left font-medium">Luogo</th>
                             <th className="px-3 py-2 text-left font-medium">Descrizione</th>
                             <th className="px-3 py-2 text-left font-medium">Tipo</th>
+                            <th className="px-3 py-2 text-left font-medium">Consulente</th>
                             <th className="px-3 py-2 text-right font-medium">Importo €</th>
                             <th className="px-3 py-2 text-right font-medium">IVA €</th>
                             <th className="px-3 py-2 text-right font-medium">Ammissibile €</th>
-                            <th className="px-3 py-2 text-left font-medium">Fattura</th>
-                            <th className="px-3 py-2 text-left font-medium">Pagato il</th>
                             <th className="px-3 py-2 w-10"></th>
                           </tr>
                         </thead>
@@ -409,18 +407,15 @@ const ExpensesPage = () => {
                                     {cfg.label}
                                   </Badge>
                                 </td>
+                                <td className="px-3 py-2 text-gray-700 text-[11px]">
+                                  {e.consultant?.name || e.consultant_name || '—'}
+                                </td>
                                 <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(e.amount)}</td>
                                 <td className="px-3 py-2 text-right text-red-600">
                                   {e.iva ? fmt(e.iva) : '—'}
                                 </td>
                                 <td className="px-3 py-2 text-right font-semibold text-green-700">
                                   {e.eligible_amount ? fmt(e.eligible_amount) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-gray-500 text-[11px]">
-                                  {e.invoice_ref || '—'}
-                                </td>
-                                <td className="px-3 py-2 text-gray-500 text-[11px] whitespace-nowrap">
-                                  {e.payment_date ? new Date(e.payment_date).toLocaleDateString('it-IT') : '—'}
                                 </td>
                                 <td className="px-3 py-1">
                                   <button
@@ -438,7 +433,7 @@ const ExpensesPage = () => {
                         {/* Totale progetto */}
                         <tfoot>
                           <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold text-xs">
-                            <td colSpan={4} className="px-3 py-2 text-gray-700 uppercase tracking-wide">Totale {group.name}</td>
+                            <td colSpan={5} className="px-3 py-2 text-gray-700 uppercase tracking-wide">Totale {group.name}</td>
                             <td className="px-3 py-2 text-right text-gray-900">
                               {fmt(group.items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))}
                             </td>
@@ -448,7 +443,7 @@ const ExpensesPage = () => {
                             <td className="px-3 py-2 text-right text-green-700">
                               {fmt(gEligible)}
                             </td>
-                            <td colSpan={3}></td>
+                            <td></td>
                           </tr>
                         </tfoot>
                       </table>

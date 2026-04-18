@@ -25,13 +25,14 @@ const AdminExpensesList = () => {
   const filteredExpenses = useMemo(() => {
     return allCosts.filter(exp => {
       // Consultant Filter: Only applies if the item has a consultantId
-      const matchConsultant = filterConsultant === 'all' || exp.consultantId === filterConsultant;
+      const matchConsultant = filterConsultant === 'all' || exp.consultant_id === filterConsultant || exp.consultantId === filterConsultant;
       const matchProject = filterProject === 'all' || exp.projectId === filterProject;
       
       const searchLower = searchQuery.toLowerCase();
       const matchSearch = 
         (exp.description && exp.description.toLowerCase().includes(searchLower)) ||
-        (exp.consultantName && exp.consultantName.toLowerCase().includes(searchLower)) || 
+        (exp.consultant_name && exp.consultant_name.toLowerCase().includes(searchLower)) ||
+        (exp.consultantName && exp.consultantName.toLowerCase().includes(searchLower)) ||
         (exp.category && exp.category.toLowerCase().includes(searchLower));
 
       return matchConsultant && matchProject && matchSearch;
@@ -129,7 +130,7 @@ const AdminExpensesList = () => {
                         </span>
                       </TableCell>
                       <TableCell className="font-medium text-gray-700 text-sm">
-                        {expense.consultantName || (expense.category === 'Subcontract' ? 'External Vendor' : 'System')}
+                        {expense.consultant_name || expense.consultantName || (expense.category === 'Subcontract' ? 'External Vendor' : '—')}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate text-gray-500 text-sm" title={expense.description}>
                         {expense.description || '-'}
