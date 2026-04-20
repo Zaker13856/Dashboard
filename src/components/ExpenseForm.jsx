@@ -101,18 +101,29 @@ const ExpenseForm = () => {
 
         const selectedProject = projects.find(p => p.id === formData.projectId);
 
-        addExpense({
-          consultantId: user.id, // Explicitly filtered
-          consultantName: `${user.name} ${user.surname || ''}`,
+        const descWithCategory = formData.description
+          ? `[${formData.type}] ${formData.description}`
+          : `[${formData.type}]`;
+
+        const result = await addExpense({
+          consultantId: user.id,
           projectId: formData.projectId,
-          projectName: selectedProject ? selectedProject.name : 'Unknown Project',
-          expenseDate: formData.date,
-          expenseType: formData.type,
+          date: formData.date,
+          type: 'travel',
           amount: totalAmount,
-          vat: vatAmount,
+          iva: vatAmount,
           eligibleAmount: formData.eligibleCosts,
-          description: formData.description
+          description: descWithCategory,
         });
+
+        if (result?.error) {
+          toast({
+            title: "Errore salvataggio",
+            description: result.error.message || String(result.error),
+            variant: "destructive",
+          });
+          return;
+        }
 
         toast({
           title: "Successo",

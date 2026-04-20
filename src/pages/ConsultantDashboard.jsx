@@ -1,15 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
-import MonthlyHoursForm from '@/components/MonthlyHoursForm';
-import ConsultantExpensesSection from '@/components/ConsultantExpensesSection';
-import { Progress } from '@/components/ui/progress';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from '@/components/ui/card';
 import {
-  AlertTriangle, Clock, CalendarDays, TrendingUp,
-  LayoutDashboard, WalletCards, FileText, Euro, Timer, CheckCircle2
+  Clock, FileText, Euro, Timer, CheckCircle2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -168,85 +162,9 @@ const ConsultantDashboard = () => {
         />
       </div>
 
-      {/* ── TABS ── */}
-      <Tabs defaultValue="timesheet" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-[400px] mb-6">
-          <TabsTrigger value="timesheet" className="flex items-center gap-2">
-            <LayoutDashboard className="w-4 h-4" />
-            Timesheet
-          </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex items-center gap-2">
-            <WalletCards className="w-4 h-4" />
-            Le Mie Spese
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="timesheet">
-          {monthlyTotal > monthlyLimit * 0.9 && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Attenzione limite mensile</AlertTitle>
-              <AlertDescription>
-                Inserite {monthlyTotal.toFixed(2)} h su {monthlyLimit} h mensili.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="space-y-6 lg:col-span-1">
-              <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-100 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-medium flex items-center gap-2">
-                    <CalendarDays className="w-5 h-5 text-blue-600" />
-                    Ore Mensili
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-bold text-gray-700">{monthlyTotal.toFixed(2)} / {monthlyLimit} h</span>
-                      <span className="text-gray-500 font-medium">{monthlyProgress.toFixed(0)}%</span>
-                    </div>
-                    <Progress value={monthlyProgress} className="h-3" indicatorClassName={getProgressColor(monthlyProgress)} />
-                  </div>
-                  <div className="text-xs text-gray-500 flex justify-between bg-white p-2 rounded border border-gray-100">
-                    <span className="font-medium">Rimanenti:</span>
-                    <span className="font-bold text-blue-600">{Math.max(0, monthlyLimit - monthlyTotal).toFixed(2)} h</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-white to-purple-50 border-purple-100 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-medium flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-purple-600" />
-                    Progressione Annuale
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-bold text-gray-700">{annualTotal.toFixed(2)} / {annualLimit} h</span>
-                      <span className="text-gray-500 font-medium">{annualProgress.toFixed(0)}%</span>
-                    </div>
-                    <Progress value={annualProgress} className="h-3" indicatorClassName="bg-purple-600" />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="lg:col-span-2">
-              <MonthlyHoursForm />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="expenses">
-          <ConsultantExpensesSection />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 };
 
+// v2
 export default ConsultantDashboard;

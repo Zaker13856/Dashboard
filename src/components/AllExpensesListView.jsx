@@ -105,6 +105,7 @@ const AllExpensesListView = () => {
                 <TableHead>Date</TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Consulente</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
@@ -118,12 +119,15 @@ const AllExpensesListView = () => {
                       {item.date ? format(new Date(item.date), 'dd/MM/yyyy') : '-'}
                     </TableCell>
                     <TableCell className="font-medium text-gray-900">
-                      {getProjectName(item.projectId)}
+                      {item.project_name || getProjectName(item.projectId || item.project_id)}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={`font-normal ${getCategoryColor(item.category)}`}>
                         {getCategoryDisplayName(item.category)}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-gray-700 text-sm">
+                      {item.consultant_name || '—'}
                     </TableCell>
                     <TableCell className="text-gray-700 max-w-[300px] truncate" title={item.description}>
                       {item.description}
@@ -145,7 +149,7 @@ const AllExpensesListView = () => {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                  <TableCell colSpan={7} className="h-24 text-center text-gray-500">
                     No expenses found matching your criteria.
                   </TableCell>
                 </TableRow>

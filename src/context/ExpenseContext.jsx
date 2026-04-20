@@ -15,8 +15,12 @@ export const ExpenseProvider = ({ children }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data } = await supabase.from('expenses').select('*');
-      if (data) setAllExpenses(data);
+      const { data } = await supabase.from('expenses').select('*, project:projects(id,name), consultant:consultants(id,name)');
+      if (data) setAllExpenses(data.map(e => ({
+        ...e,
+        project_name: e.project?.name || null,
+        consultant_name: e.consultant?.name || null,
+      })));
       setLoading(false);
     };
 
@@ -65,13 +69,15 @@ export const ExpenseProvider = ({ children }) => {
   }, [otherCosts]);
 
   const getExpensesByConsultant = useCallback((consultantId) => {
-    // consultant_id not in current DB schema — returns all regular expenses
-    return expenses.map(e => ({
-      ...e,
-      expenseDate: e.date,
-      expenseType: e.type,
-      amount: parseFloat(e.amount) || 0,
-    }));
+    if (!consultantId) return [];
+    return expenses
+      .filter(e => e.consultant_id === consultantId)
+      .map(e => ({
+        ...e,
+        expenseDate: e.date,
+        expenseType: e.type,
+        amount: parseFloat(e.amount) || 0,
+      }));
   }, [expenses]);
 
   const getConsultantExpenseStats = useCallback((consultantId) => {
@@ -94,15 +100,20 @@ export const ExpenseProvider = ({ children }) => {
 
   // ── WRITE FUNCTIONS ─────────────────────────────────────────────────────────
 
-  const addExpense = async ({ projectId, date, type, amount, description }) => {
-    const { data, error } = await supabase.from('expenses').insert({
+  const addExpense = async ({ projectId, consultantId, date, type, amount, iva, eligibleAmount, description }) => {
+    const payload = {
       project_id: projectId,
+      consultant_id: consultantId || null,
       date,
       type,
       amount: parseFloat(amount) || 0,
       description,
-    }).select().single();
+    };
+    if (iva !== undefined) payload.iva = parseFloat(iva) || 0;
+    if (eligibleAmount !== undefined) payload.eligible_amount = parseFloat(eligibleAmount) || 0;
+    const { data, error } = await supabase.from('expenses').insert(payload).select().single();
     if (!error && data) setAllExpenses(prev => [...prev, data]);
+    return { data, error };
   };
 
   const updateExpense = async (id, data) => {
