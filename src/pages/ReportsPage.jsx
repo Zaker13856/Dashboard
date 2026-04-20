@@ -106,16 +106,17 @@ const ReportsPage = () => {
         {loading ? (
           <div className="text-center py-16 text-gray-400">Caricamento...</div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
-            <table className="text-xs min-w-full border-collapse">
+          <div className="relative overflow-auto rounded-xl border border-gray-200 shadow-sm max-h-[75vh]">
+            <table className="text-xs min-w-full border-separate border-spacing-0">
               <thead>
-                <tr className="bg-gray-100 border-b-2 border-gray-300">
-                  <th className="sticky left-0 z-20 bg-gray-100 px-3 py-2.5 text-left font-semibold text-gray-600 w-8">Anno</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-28"></th>
+                <tr>
+                  <th className="sticky top-0 left-0 z-30 bg-gray-100 px-3 py-2.5 text-left font-semibold text-gray-600 w-16 border-r border-b-2 border-gray-300">Anno</th>
+                  <th className="sticky top-0 z-30 bg-gray-100 px-3 py-2.5 text-left font-semibold text-gray-600 w-32 border-r border-b-2 border-gray-300"
+                      style={{ left: '64px' }}></th>
                   {consultants.map(c => {
                     const parts = c.name.split(' ');
                     return (
-                      <th key={c.id} className="px-2 py-2 text-center font-semibold text-gray-700 min-w-[80px]">
+                      <th key={c.id} className="sticky top-0 z-20 bg-gray-100 px-2 py-2 text-center font-semibold text-gray-700 min-w-[80px] border-b-2 border-gray-300">
                         <div>{parts[0]}</div>
                         <div className="font-normal text-gray-400">{parts.slice(1).join(' ')}</div>
                       </th>
@@ -128,13 +129,12 @@ const ReportsPage = () => {
                   const isPast    = year < curYear;
                   const isCurrent = year === curYear;
                   const yearBg    = isPast ? 'bg-gray-50' : isCurrent ? 'bg-blue-50/40' : 'bg-white';
-                  const borderTop = yi > 0 ? 'border-t-2 border-gray-200' : '';
+                  const borderTop = yi > 0 ? 'border-t-2 border-gray-300' : '';
 
                   return METRICS.map((m, mi) => (
                     <tr key={`${year}-${m.key}`}
                       className={cn(
                         yearBg,
-                        mi === 0 ? borderTop : 'border-t border-gray-100',
                         m.key === 'utilizzo' ? 'pb-1' : ''
                       )}>
 
@@ -142,7 +142,8 @@ const ReportsPage = () => {
                       {mi === 0 ? (
                         <td rowSpan={4}
                           className={cn(
-                            'sticky left-0 z-10 px-3 text-center font-bold text-gray-900 border-r border-gray-200',
+                            'sticky left-0 z-10 px-3 text-center font-bold text-gray-900 border-r border-b border-gray-200',
+                            borderTop,
                             yearBg
                           )}>
                           {year}
@@ -150,14 +151,19 @@ const ReportsPage = () => {
                         </td>
                       ) : null}
 
-                      {/* Metric label */}
-                      <td className={cn('px-3 py-1.5 text-gray-500 whitespace-nowrap', yearBg)}>
+                      {/* Metric label — sticky left too */}
+                      <td className={cn('sticky z-10 px-3 py-1.5 text-gray-500 whitespace-nowrap border-r border-b border-gray-100',
+                          mi === 0 ? borderTop : '',
+                          yearBg)}
+                          style={{ left: '64px' }}>
                         {m.label}
                       </td>
 
                       {/* Values */}
                       {consultants.map(c => (
-                        <td key={c.id} className={cn('px-2 py-1.5 text-center', yearBg,
+                        <td key={c.id} className={cn('px-2 py-1.5 text-center border-b border-gray-100',
+                          mi === 0 ? borderTop : '',
+                          yearBg,
                           m.key === 'utilizzo' ? 'pb-2' : '')}>
                           {renderCell(year, c.id, m.key)}
                         </td>

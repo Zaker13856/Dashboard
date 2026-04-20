@@ -187,34 +187,39 @@ const ConsultantsPage = () => {
         {/* ── Blocco B: Storico Tariffe ── */}
         <div>
           <h2 className="text-lg font-semibold text-gray-800 mb-3">Storico Tariffe per Anno</h2>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
+          <div className="relative overflow-auto rounded-lg border border-gray-200 max-h-[70vh]">
+            <table className="w-full text-sm border-separate border-spacing-0">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left font-medium text-gray-700 border-r border-gray-200 min-w-[160px]">
+                <tr className="bg-gray-50">
+                  <th className="sticky top-0 left-0 z-30 bg-gray-50 px-4 py-3 text-left font-medium text-gray-700 border-r border-b border-gray-200 min-w-[180px]">
                     Consulente
                   </th>
                   {years.map(year => (
-                    <th key={year} colSpan={4} className="px-2 py-3 text-center font-semibold text-gray-700 border-r border-gray-200 last:border-0">
+                    <th key={year} colSpan={4} className="sticky top-0 z-20 bg-gray-50 px-2 py-3 text-center font-semibold text-gray-700 border-r border-b border-gray-200 last:border-r-0">
                       {year}
                     </th>
                   ))}
                 </tr>
-                <tr className="bg-gray-50/50 border-b border-gray-200 text-[11px] text-gray-500">
-                  <th className="sticky left-0 bg-gray-50/50 px-4 py-2 border-r border-gray-200" />
+                <tr className="bg-gray-50/95 text-[11px] text-gray-500">
+                  <th className="sticky left-0 z-30 bg-gray-50/95 px-4 py-2 border-r border-b border-gray-200"
+                      style={{ top: '45px' }} />
                   {years.flatMap(year =>
                     ['Costo Az. €', 'Ore Max', 'MU', 'Tariffa €'].map(h => (
-                      <th key={`${year}-${h}`} className="px-2 py-2 text-center font-normal border-r border-gray-200 last:border-0 min-w-[72px]">
+                      <th key={`${year}-${h}`}
+                          className="sticky z-20 bg-gray-50/95 px-2 py-2 text-center font-normal border-r border-b border-gray-200 last:border-r-0 min-w-[72px]"
+                          style={{ top: '45px' }}>
                         {h}
                       </th>
                     ))
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {consultants.map((c, idx) => (
-                  <tr key={c.id} className={cn('hover:bg-yellow-50/20 transition-colors', idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30')}>
-                    <td className="sticky left-0 bg-inherit px-4 py-2 font-medium text-gray-900 border-r border-gray-200 text-sm">
+              <tbody>
+                {consultants.map((c, idx) => {
+                  const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                  return (
+                  <tr key={c.id} className={cn('hover:bg-yellow-50/40 transition-colors group', rowBg)}>
+                    <td className={cn('sticky left-0 z-10 px-4 py-2 font-medium text-gray-900 border-r border-b border-gray-200 text-sm group-hover:bg-yellow-50/40', rowBg)}>
                       {c.name}
                     </td>
                     {years.flatMap(year => {
@@ -225,36 +230,38 @@ const ConsultantsPage = () => {
                       const tariffa = ore > 0 && costo > 0 ? (costo / ore).toFixed(2) : '—';
 
                       return [
-                        <td key={`${year}-costo`} className="px-1 py-1 border-r border-gray-200">
+                        <td key={`${year}-costo`} className="px-1 py-1 border-r border-b border-gray-200 bg-blue-50/40">
                           <input
                             type="number"
-                            className="w-full px-1.5 py-1 text-xs text-center rounded border border-transparent hover:border-gray-300 focus:border-blue-400 focus:outline-none bg-transparent"
+                            inputMode="decimal"
+                            className="no-spinner w-full px-1.5 py-1 text-xs text-center rounded border border-transparent hover:border-blue-300 focus:border-blue-500 focus:bg-white focus:outline-none bg-transparent"
                             value={draft.costo_aziendale}
                             onChange={e => updateDraft(c.id, year, 'costo_aziendale', e.target.value)}
                             onBlur={() => handleCellBlur(c.id, year)}
                             placeholder="—"
                           />
                         </td>,
-                        <td key={`${year}-ore`} className="px-1 py-1 border-r border-gray-200">
+                        <td key={`${year}-ore`} className="px-1 py-1 border-r border-b border-gray-200 bg-blue-50/40">
                           <input
                             type="number"
-                            className="w-full px-1.5 py-1 text-xs text-center rounded border border-transparent hover:border-gray-300 focus:border-blue-400 focus:outline-none bg-transparent"
+                            inputMode="decimal"
+                            className="no-spinner w-full px-1.5 py-1 text-xs text-center rounded border border-transparent hover:border-blue-300 focus:border-blue-500 focus:bg-white focus:outline-none bg-transparent"
                             value={draft.ore_max}
                             onChange={e => updateDraft(c.id, year, 'ore_max', e.target.value)}
                             onBlur={() => handleCellBlur(c.id, year)}
                             placeholder="—"
                           />
                         </td>,
-                        <td key={`${year}-mu`} className="px-2 py-2 text-center text-xs text-gray-500 border-r border-gray-200">
+                        <td key={`${year}-mu`} className="px-2 py-2 text-center text-xs text-gray-500 border-r border-b border-gray-200">
                           {mu}
                         </td>,
-                        <td key={`${year}-tariffa`} className="px-2 py-2 text-center text-xs text-gray-500 border-r border-gray-200 last:border-0">
+                        <td key={`${year}-tariffa`} className="px-2 py-2 text-center text-xs text-gray-500 border-r border-b border-gray-200 last:border-r-0">
                           {tariffa}
                         </td>,
                       ];
                     })}
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
