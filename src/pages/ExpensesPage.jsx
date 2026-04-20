@@ -59,6 +59,7 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
     }
     toast({ title: 'Spesa registrata' });
     setForm({ project_id: form.project_id, date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '' });
+    window.dispatchEvent(new CustomEvent('expenses:updated'));
     onSaved();
   };
 
@@ -200,7 +201,18 @@ const ExpensesPage = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Eliminare questa spesa?')) return;
     const { error } = await supabase.from('expenses').delete().eq('id', id);
-    if (!error) setExpenses(prev => prev.filter(e => e.id !== id));
+    if (!error) {
+      setExpenses(prev => prev.filter(e => e.id !== id));
+      window.dispatchEvent(new CustomEvent('expenses:updated'));
+    }
+  };
+
+  const handleChangeType = async (id, newType) => {
+    const { error } = await supabase.from('expenses').update({ type: newType }).eq('id', id);
+    if (error) { alert('Errore aggiornamento tipo: ' + error.message); return; }
+    setExpenses(prev => prev.map(e => e.id === id ? { ...e, type: newType } : e));
+    // Notifica ProjectManagement di ricaricare i "Fatti"
+    window.dispatchEvent(new CustomEvent('expenses:updated'));
   };
 
   const exportToXLS = (projectName, items) => {
@@ -327,7 +339,7 @@ const ExpensesPage = () => {
             Nessuna spesa trovata.
           </div>
         ) : (
-          <Accordion type="multiple" defaultValue={grouped.map(g => g.id)} className="space-y-3">
+          <Accordion type="multiple" className="space-y-3">
             {grouped.map(group => {
               const sumByType = t => group.items.filter(e => e.type === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
               const gTravel   = sumByType('travel');
@@ -405,9 +417,23 @@ const ExpensesPage = () => {
                                   {e.description}
                                 </td>
                                 <td className="px-3 py-2">
-                                  <Badge variant="outline" className={cn("text-[10px] font-medium", cfg.color)}>
-                                    {cfg.label}
-                                  </Badge>
+                                  <Select value={e.type} onValueChange={(v) => handleChangeType(e.id, v)}>
+                                    <SelectTrigger
+                                      className={cn(
+                                        "h-6 px-2 py-0 text-[10px] font-medium border rounded-full w-auto gap-1 [&>svg]:h-3 [&>svg]:w-3",
+                                        cfg.color
+                                      )}
+                                      title="Clicca per cambiare tipo"
+                                    >
+                                      <SelectValue>{cfg.label}</SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="travel">Travel</SelectItem>
+                                      <SelectItem value="other_cost">Other Cost</SelectItem>
+                                      <SelectItem value="subcontract">Subcontract</SelectItem>
+                                      <SelectItem value="third_parties">3rd Parties</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </td>
                                 <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(e.amount)}</td>
                                 <td className="px-3 py-2 text-right text-red-600">

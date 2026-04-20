@@ -71,8 +71,10 @@ const GaugeBox = ({ title, sold, planned, delta, pct, isOver, soldLabel, planned
 
 const PlanningGauge = ({
   soldMU, plannedMU, soldValue, plannedValue,
-  soldTravel, plannedTravel, soldOther, plannedOther,
-  soldSubcontr, plannedSubcontr, soldThirdParties, plannedThirdParties,
+  soldTravel, plannedTravel, actualTravel,
+  soldOther, plannedOther, actualOther,
+  soldSubcontr, plannedSubcontr, actualSubcontr,
+  soldThirdParties, plannedThirdParties, actualThirdParties,
 }) => {
   const muDelta    = plannedMU - (soldMU || 0);
   const valueDelta = plannedValue - (soldValue || 0);
@@ -82,10 +84,10 @@ const PlanningGauge = ({
   const valueOver  = (soldValue != null && soldValue > 0) && plannedValue > soldValue;
 
   const costRows = [
-    { label: 'Travel €',      sold: soldTravel,       planned: plannedTravel },
-    { label: 'Other €',       sold: soldOther,        planned: plannedOther },
-    { label: 'Subcontr. €',   sold: soldSubcontr,     planned: plannedSubcontr },
-    { label: '3rd Parties €', sold: soldThirdParties, planned: plannedThirdParties },
+    { label: 'Travel €',      sold: soldTravel,       planned: plannedTravel,        actual: actualTravel },
+    { label: 'Other €',       sold: soldOther,        planned: plannedOther,         actual: actualOther },
+    { label: 'Subcontr. €',   sold: soldSubcontr,     planned: plannedSubcontr,      actual: actualSubcontr },
+    { label: '3rd Parties €', sold: soldThirdParties, planned: plannedThirdParties,  actual: actualThirdParties },
   ];
 
   return (
@@ -125,22 +127,30 @@ const PlanningGauge = ({
                 <th className="px-3 py-2 text-left text-gray-500 font-medium">Voce</th>
                 <th className="px-3 py-2 text-right text-gray-500 font-medium">Venduto €</th>
                 <th className="px-3 py-2 text-right text-gray-500 font-medium">Pianificato €</th>
+                <th className="px-3 py-2 text-right text-gray-500 font-medium">Fatti €</th>
                 <th className="px-3 py-2 text-right text-gray-500 font-medium">Delta €</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {costRows.map(({ label, sold, planned }) => {
+              {costRows.map(({ label, sold, planned, actual }) => {
                 const s     = parseFloat(sold)    || 0;
                 const p     = parseFloat(planned) || 0;
-                const delta = p - s;
-                const isOver = s > 0 && p > s;
+                const a     = parseFloat(actual)  || 0;
+                // Delta = Venduti - Fatti (quanto resta disponibile; negativo = in eccesso)
+                const delta = s - a;
+                const actualOver = s > 0 && a > s;
                 return (
                   <tr key={label}>
                     <td className="px-3 py-2 text-gray-600">{label}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{s > 0 ? fmt(s) : '—'}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{fmt(p)}</td>
                     <td className={cn('px-3 py-2 text-right font-semibold',
-                      s > 0 ? (isOver ? 'text-red-600' : 'text-green-600') : 'text-gray-400'
+                      a > 0 ? (actualOver ? 'text-red-600' : 'text-blue-600') : 'text-gray-400'
+                    )}>
+                      {a > 0 ? fmt(a) : '—'}
+                    </td>
+                    <td className={cn('px-3 py-2 text-right font-semibold',
+                      s > 0 ? (actualOver ? 'text-red-600' : 'text-green-600') : 'text-gray-400'
                     )}>
                       {s > 0 ? `${delta > 0 ? '+' : ''}${fmt(delta)}` : '—'}
                     </td>
@@ -450,8 +460,16 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
   const [deletingPeriod, setDeletingPeriod] = useState(null); // { id, label }
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false);
   const [allConsultants, setAllConsultants] = useState([]); // full roster for selector
+  const [actualsByType, setActualsByType] = useState({ travel: 0, other_cost: 0, subcontract: 0, third_parties: 0 });
 
   useEffect(() => { load(); }, [project.id]);
+
+  // Ricarica i "Fatti" quando una spesa viene modificata in ExpensesPage
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener('expenses:updated', handler);
+    return () => window.removeEventListener('expenses:updated', handler);
+  }, [project.id]);
 
   const load = async () => {
     setLoading(true);
@@ -502,6 +520,35 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
       };
     });
     setCostsMap(coMap);
+
+    // ─── Spese "Fatti": somma da expenses (admin + consulenti) + travel_reports ──
+    const actuals = { travel: 0, other_cost: 0, subcontract: 0, third_parties: 0 };
+
+    const { data: expData } = await supabase
+      .from('expenses')
+      .select('type, amount, eligible_amount, iva')
+      .eq('project_id', project.id);
+    (expData || []).forEach(e => {
+      const val = parseFloat(e.eligible_amount);
+      const amt = parseFloat(e.amount) || 0;
+      const iva = parseFloat(e.iva) || 0;
+      const elig = !isNaN(val) ? val : (amt - iva);
+      if (actuals[e.type] !== undefined) actuals[e.type] += elig;
+    });
+
+    // Travel: aggiungi anche note spese viaggio dei consulenti (submitted)
+    const { data: trData } = await supabase
+      .from('travel_reports')
+      .select('travel_report_items(amount, iva)')
+      .eq('project_id', project.id)
+      .eq('status', 'submitted');
+    (trData || []).forEach(r => {
+      (r.travel_report_items || []).forEach(i => {
+        actuals.travel += (parseFloat(i.amount) || 0) - (parseFloat(i.iva) || 0);
+      });
+    });
+
+    setActualsByType(actuals);
 
     const years = [...new Set(pList.map(p => p.year))];
     const cIds  = Object.keys(cMap);
@@ -887,12 +934,16 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
           plannedValue={totals.costiPersonale}
           soldTravel={project.sold_travel}
           plannedTravel={totals.travel}
+          actualTravel={actualsByType.travel}
           soldOther={project.sold_other_costs}
           plannedOther={totals.otherCosts}
+          actualOther={actualsByType.other_cost}
           soldSubcontr={project.sold_subcontracting}
           plannedSubcontr={totals.subcontr}
+          actualSubcontr={actualsByType.subcontract}
           soldThirdParties={project.sold_third_parties}
           plannedThirdParties={totals.thirdParties}
+          actualThirdParties={actualsByType.third_parties}
         />
       )}
 
