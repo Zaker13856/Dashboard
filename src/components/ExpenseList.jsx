@@ -86,7 +86,9 @@ const ExpenseList = () => {
         const gOther  = sumByType('other_cost');
         const gSub    = sumByType('subcontract');
         const gThird  = sumByType('third_parties');
-        const gEligible = group.items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+        const gEligible = group.items
+          .filter(e => { const t = e.expenseType || e.type; return t === 'travel' || t === 'other_cost'; })
+          .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
 
         return (
           <AccordionItem key={group.id} value={group.id} className="border rounded-xl bg-white shadow-sm">

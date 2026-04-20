@@ -230,7 +230,9 @@ const ExpensesPage = () => {
     // Riga totale
     const totAmt  = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
     const totIva  = items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
-    const totElig = items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+    const totElig = items
+      .filter(e => e.type === 'travel' || e.type === 'other_cost')
+      .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
     rows.push(['TOTALE', '', '', '', '', totAmt, totIva, totElig]);
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
@@ -345,7 +347,9 @@ const ExpensesPage = () => {
               const gOther    = sumByType('other_cost');
               const gSub      = sumByType('subcontract');
               const gThird    = sumByType('third_parties');
-              const gEligible = group.items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+              const gEligible = group.items
+                .filter(e => e.type === 'travel' || e.type === 'other_cost')
+                .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
 
               return (
                 <AccordionItem key={group.id} value={group.id} className="border rounded-xl bg-white shadow-sm">
