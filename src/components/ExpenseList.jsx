@@ -106,48 +106,6 @@ const ExpenseList = () => {
     XLSX.writeFile(wb, `Spese_${safeName}_${stamp}.xlsx`);
   };
 
-  const exportAllToXLS = () => {
-    if (!grouped || grouped.length === 0) return;
-    const wb = XLSX.utils.book_new();
-    grouped.forEach(group => {
-      const rows = group.items.map(e => {
-        const t = e.expenseType || e.type;
-        const cfg = TYPE_CONFIG[t] || TYPE_CONFIG.other_cost;
-        let dataStr = e.date_label || '';
-        if (!dataStr && e.expenseDate) {
-          try { dataStr = format(new Date(e.expenseDate), 'dd/MM/yyyy'); } catch { dataStr = ''; }
-        }
-        return {
-          'Data': dataStr,
-          'Luogo': e.place || '',
-          'Descrizione': e.description || '',
-          'Tipo': cfg.label,
-          'Importo €': parseFloat(e.amount) || 0,
-          'IVA €': parseFloat(e.iva) || 0,
-          'Ammissibile €': parseFloat(e.eligible_amount) || 0,
-          'Fattura': e.invoice_ref || '',
-          'Pagato il': e.payment_date ? (() => { try { return format(new Date(e.payment_date), 'dd/MM/yyyy'); } catch { return ''; } })() : '',
-        };
-      });
-      rows.push({
-        'Data': 'TOTALE',
-        'Luogo': '',
-        'Descrizione': '',
-        'Tipo': '',
-        'Importo €': group.items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-        'IVA €': group.items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0),
-        'Ammissibile €': group.items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0),
-        'Fattura': '',
-        'Pagato il': '',
-      });
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const safeName = (group.name || 'Spese').replace(/[\\/\?\*\[\]:]/g, '').substring(0, 28);
-      XLSX.utils.book_append_sheet(wb, ws, safeName || 'Spese');
-    });
-    const stamp = format(new Date(), 'yyyyMMdd');
-    XLSX.writeFile(wb, `Spese_Tutti_${stamp}.xlsx`);
-  };
-
   if (loading) return <div className="p-4 text-center">Loading expenses...</div>;
 
   if (expenses.length === 0) {
@@ -163,18 +121,6 @@ const ExpenseList = () => {
   }
 
   return (
-    <div className="space-y-3">
-    <div className="flex justify-end">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={exportAllToXLS}
-        className="gap-2 text-green-700 border-green-300 hover:bg-green-50"
-      >
-        <FileSpreadsheet className="w-4 h-4" />
-        Esporta tutto in Excel
-      </Button>
-    </div>
     <Accordion type="multiple" className="space-y-3">
       {grouped.map(group => {
         const sumByType = t => group.items.filter(e => (e.expenseType || e.type) === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
@@ -311,7 +257,6 @@ const ExpenseList = () => {
         );
       })}
     </Accordion>
-    </div>
   );
 };
 
