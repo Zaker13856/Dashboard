@@ -1,2 +1,0 @@
-## Pages
-- [Timesheet Tracker - Manage Your Work Hours](/timesheetdashboard): Track your work hours efficiently with our timesheet tracker. Manage projects, log daily entries, and monitor monthly and annual hour limits.
