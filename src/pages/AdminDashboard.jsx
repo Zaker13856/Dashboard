@@ -33,20 +33,18 @@ const AdminDashboard = () => {
       // Ore pianificate anno corrente (da ore_max consulenti)
       const planned = (rates || []).reduce((sum, r) => sum + (parseFloat(r.ore_max) || 0), 0);
 
-      // Ore allocate anno corrente — escludi Lump Sum
+      // Ore allocate anno corrente
       const sold = (allocs || [])
-        .filter(a => a.project_periods?.year === currentYear && !a.project_periods?.projects?.is_lump_sum)
+        .filter(a => a.project_periods?.year === currentYear)
         .reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0);
 
       setHoursData({ planned, sold });
 
-      // MU: intero periodo, tutti gli anni — escludi Lump Sum
+      // MU: intero periodo, tutti gli anni
       const muVenduti = (projectsDB || [])
-        .filter(p => !p.is_lump_sum)
         .reduce((sum, p) => sum + (parseFloat(p.sold_person_months) || 0), 0);
 
       const muPianificati = (allocs || [])
-        .filter(a => !a.project_periods?.projects?.is_lump_sum)
         .reduce((sum, a) => sum + (parseFloat(a.allocated_hours) || 0), 0) / MU_HOURS;
 
       setMuData({ venduti: muVenduti, pianificati: muPianificati });

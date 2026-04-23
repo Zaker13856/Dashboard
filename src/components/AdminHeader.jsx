@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2 } from 'lucide-react';
+import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +22,7 @@ const AdminHeader = () => {
     { label: 'Consultants', icon: Users, path: '/admin/consultants' },
     { label: 'Reports', icon: BarChart2, path: '/admin/reports' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },
+    { label: 'EU Expert', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
   ];
 
   return (
@@ -69,17 +70,22 @@ const AdminHeader = () => {
             ? currentPath === '/admin' 
             : currentPath.startsWith(item.path);
             
+          const cls = cn(
+            "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap",
+            isActive
+              ? "border-blue-600 text-blue-600 bg-white"
+              : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 hover:bg-white/50"
+          );
+          if (item.external) {
+            return (
+              <a key={item.path} href={item.path} target="_blank" rel="noopener noreferrer" className={cls}>
+                <item.icon className="w-4 h-4 text-gray-400" />
+                <span>{item.label}</span>
+              </a>
+            );
+          }
           return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap",
-                isActive 
-                  ? "border-blue-600 text-blue-600 bg-white" 
-                  : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 hover:bg-white/50"
-              )}
-            >
+            <Link key={item.path} to={item.path} className={cls}>
               <item.icon className={cn("w-4 h-4", isActive ? "text-blue-600" : "text-gray-400")} />
               <span>{item.label}</span>
             </Link>
