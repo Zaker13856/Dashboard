@@ -840,7 +840,7 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
               </Button>
             </div>
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-sm">
+          <div className="grid grid-cols-3 md:grid-cols-7 gap-3 text-sm">
             {[
               ['Tipo',           project.type                                                     || '—'],
               ['Inizio',         project.start_date                                               || '—'],
@@ -848,6 +848,9 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
               ['Durata',         project.duration_months ? `${project.duration_months} mesi`      : '—'],
               ['MU Venduti',     project.sold_person_months != null ? project.sold_person_months  : '—'],
               ['Valore Venduto', project.total_value        != null ? `€ ${fmt(project.total_value)}` : '—'],
+              ['Monthly Rate',   (project.total_value != null && project.sold_person_months)
+                                   ? `€ ${fmt(Math.round(project.total_value / project.sold_person_months))}`
+                                   : '—'],
             ].map(([label, val]) => (
               <div key={label}>
                 <p className="text-gray-400 text-xs mb-0.5">{label}</p>

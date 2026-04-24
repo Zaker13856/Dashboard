@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, CreditCard, Clock, Settings } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, CreditCard, Clock, Settings, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const AdminSidebar = () => {
@@ -12,6 +12,7 @@ const AdminSidebar = () => {
     { label: 'Projects', icon: Briefcase, path: '/admin/projects' },
     { label: 'Consultants', icon: Users, path: '/admin/consultants' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },
+    { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
     { label: 'Timesheets', icon: Clock, path: '/admin/timesheets' },
     { label: 'Settings', icon: Settings, path: '/admin/settings' },
   ];
@@ -25,19 +26,25 @@ const AdminSidebar = () => {
       
       <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
         {navItems.map((item) => {
-          const isActive = currentPath === item.path || (item.path !== '/admin' && currentPath.startsWith(item.path));
+          const isActive = !item.external && (currentPath === item.path || (item.path !== '/admin' && currentPath.startsWith(item.path)));
+          const className = cn(
+            "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 group",
+            isActive
+              ? "bg-blue-600 text-white shadow-md shadow-blue-900/20"
+              : "text-slate-400 hover:bg-slate-800 hover:text-white"
+          );
+          const iconEl = <item.icon className={cn("w-5 h-5 transition-colors", isActive ? "text-white" : "text-slate-500 group-hover:text-white")} />;
+          if (item.external) {
+            return (
+              <a key={item.path} href={item.path} target="_blank" rel="noopener noreferrer" className={className}>
+                {iconEl}
+                <span>{item.label}</span>
+              </a>
+            );
+          }
           return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 group",
-                isActive 
-                  ? "bg-blue-600 text-white shadow-md shadow-blue-900/20" 
-                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
-              )}
-            >
-              <item.icon className={cn("w-5 h-5 transition-colors", isActive ? "text-white" : "text-slate-500 group-hover:text-white")} />
+            <Link key={item.path} to={item.path} className={className}>
+              {iconEl}
               <span>{item.label}</span>
             </Link>
           );
