@@ -37,37 +37,52 @@ const computeDurationMonths = (start, end) => {
 };
 
 // ─── Planning Gauge ────────────────────────────────────────────
-const GaugeBox = ({ title, sold, planned, delta, pct, isOver, soldLabel, plannedLabel, deltaLabel }) => (
-  <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4">
-    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-3">{title}</p>
-    <div className="space-y-1 text-xs mb-3">
-      <div className="flex justify-between">
-        <span className="text-gray-500">Venduti:</span>
-        <span className="font-semibold text-gray-700">{sold != null ? soldLabel : '—'}</span>
+const GaugeBox = ({
+  title, sold, planned, delta, pct, isOver,
+  soldLabel, plannedLabel, deltaLabel,
+  plannedRowLabel = 'Pianificati:',
+  colorInverted   = false,
+  overLabel       = 'in eccesso',
+  underLabel      = 'disponibile',
+}) => {
+  const barClass  = colorInverted
+    ? (isOver ? 'bg-green-500' : 'bg-red-500')
+    : (isOver ? 'bg-red-500'   : 'bg-blue-500');
+  const textClass = colorInverted
+    ? (isOver ? 'text-green-600' : 'text-red-600')
+    : (isOver ? 'text-red-600'   : 'text-green-600');
+  return (
+    <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-3">{title}</p>
+      <div className="space-y-1 text-xs mb-3">
+        <div className="flex justify-between">
+          <span className="text-gray-500">Venduti:</span>
+          <span className="font-semibold text-gray-700">{sold != null ? soldLabel : '—'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">{plannedRowLabel}</span>
+          <span className="font-semibold text-gray-700">{plannedLabel}</span>
+        </div>
       </div>
-      <div className="flex justify-between">
-        <span className="text-gray-500">Pianificati:</span>
-        <span className="font-semibold text-gray-700">{plannedLabel}</span>
+      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-2">
+        <div
+          className={cn('h-full rounded-full transition-all duration-500', barClass)}
+          style={{ width: `${pct}%` }}
+        />
       </div>
+      {sold != null && sold > 0 ? (
+        <div className={cn('text-sm font-bold', textClass)}>
+          {delta > 0 ? '+' : ''}{deltaLabel}
+          <span className="ml-1.5 text-[10px] font-normal text-gray-500">
+            {isOver ? overLabel : underLabel}
+          </span>
+        </div>
+      ) : (
+        <div className="text-xs text-gray-400">Valore venduto non impostato</div>
+      )}
     </div>
-    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-2">
-      <div
-        className={cn('h-full rounded-full transition-all duration-500', isOver ? 'bg-red-500' : 'bg-blue-500')}
-        style={{ width: `${pct}%` }}
-      />
-    </div>
-    {sold != null && sold > 0 ? (
-      <div className={cn('text-sm font-bold', isOver ? 'text-red-600' : 'text-green-600')}>
-        {delta > 0 ? '+' : ''}{deltaLabel}
-        <span className="ml-1.5 text-[10px] font-normal text-gray-500">
-          {isOver ? 'in eccesso' : 'disponibile'}
-        </span>
-      </div>
-    ) : (
-      <div className="text-xs text-gray-400">Valore venduto non impostato</div>
-    )}
-  </div>
-);
+  );
+};
 
 const PlanningGauge = ({
   soldMU, plannedMU, soldValue, plannedValue,
@@ -75,6 +90,7 @@ const PlanningGauge = ({
   soldOther, plannedOther, actualOther,
   soldSubcontr, plannedSubcontr, actualSubcontr,
   soldThirdParties, plannedThirdParties, actualThirdParties,
+  overheadRate = 0.25,
 }) => {
   const muDelta    = plannedMU - (soldMU || 0);
   const valueDelta = plannedValue - (soldValue || 0);
@@ -82,6 +98,16 @@ const PlanningGauge = ({
   const valuePct   = soldValue > 0 ? Math.min((plannedValue / soldValue) * 100, 100) : 0;
   const muOver     = (soldMU    != null && soldMU    > 0) && plannedMU    > soldMU;
   const valueOver  = (soldValue != null && soldValue > 0) && plannedValue > soldValue;
+
+  // Costi Indiretti = overheadRate × (valore mesi + travel + other)
+  // soldValue è già il valore-mesi venduto (MU × tariffa, NON include travel/other/sub/3rd).
+  // plannedValue è già costiPersonale (NON include travel/other/sub/3rd).
+  // Sub e 3rd Parties NON entrano nella base di calcolo.
+  const indirectSold   = overheadRate * ((soldValue   || 0) + (soldTravel   || 0) + (soldOther   || 0));
+  const indirectActual = overheadRate * ((plannedValue|| 0) + (actualTravel || 0) + (actualOther || 0));
+  const indirectDelta  = indirectActual - indirectSold;
+  const indirectPct    = indirectSold > 0 ? Math.min((indirectActual / indirectSold) * 100, 100) : 0;
+  const indirectOver   = indirectSold > 0 && indirectActual > indirectSold;
 
   const costRows = [
     { label: 'Travel €',      sold: soldTravel,       planned: plannedTravel,        actual: actualTravel },
@@ -118,6 +144,23 @@ const PlanningGauge = ({
             soldLabel={`€ ${fmt(soldValue)}`}
             plannedLabel={`€ ${fmt(plannedValue)}`}
             deltaLabel={`€ ${fmt(Math.abs(valueDelta))}`}
+          />
+        </div>
+        <div className="flex mb-4">
+          <GaugeBox
+            title="Costi Indiretti €"
+            sold={indirectSold}
+            planned={indirectActual}
+            delta={indirectDelta}
+            pct={indirectPct}
+            isOver={indirectOver}
+            soldLabel={`€ ${fmt(indirectSold)}`}
+            plannedLabel={`€ ${fmt(indirectActual)}`}
+            deltaLabel={`€ ${fmt(Math.abs(indirectDelta))}`}
+            plannedRowLabel="Fatti:"
+            colorInverted
+            overLabel="in eccesso"
+            underLabel="in difetto"
           />
         </div>
         <div className="rounded-lg border border-gray-200 overflow-hidden">
@@ -949,6 +992,7 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
           soldThirdParties={project.sold_third_parties}
           plannedThirdParties={totals.thirdParties}
           actualThirdParties={actualsByType.third_parties}
+          overheadRate={parseFloat(project.overhead_rate) || 0.25}
         />
       )}
 
