@@ -491,6 +491,84 @@ const EditableCell = ({ value, onSave, bgClass = '' }) => {
   );
 };
 
+// Variante intera (es. durata mesi)
+const EditableInt = ({ value, onSave, min = 1, max = 60, bgClass = '', textClass = '' }) => {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal]     = useState('');
+
+  const open = () => { setLocal(value != null ? String(value) : ''); setEditing(true); };
+
+  const commit = () => {
+    setEditing(false);
+    let v = parseInt(local, 10);
+    if (isNaN(v)) return;
+    if (v < min) v = min;
+    if (v > max) v = max;
+    if (v !== value) onSave(v);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus type="number" step="1" min={min} max={max}
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(false); }}
+        className="w-16 text-center text-xs border border-blue-400 rounded px-1 py-0.5 bg-white outline-none focus:ring-1 focus:ring-blue-400"
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={open}
+      title="Clicca per modificare"
+      className={cn("text-center cursor-pointer hover:bg-white hover:shadow-sm rounded px-1 py-0.5 transition-all", bgClass, textClass)}
+    >
+      {value != null ? value : <span className="text-gray-300">—</span>}
+    </div>
+  );
+};
+
+// Variante testo (es. label periodo)
+const EditableText = ({ value, onSave, bgClass = '', textClass = '' }) => {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal]     = useState('');
+
+  const open = () => { setLocal(value || ''); setEditing(true); };
+
+  const commit = () => {
+    setEditing(false);
+    const v = (local || '').trim();
+    if (!v) return;
+    if (v !== value) onSave(v);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus type="text"
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(false); }}
+        className="w-20 text-center text-xs border border-blue-400 rounded px-1 py-0.5 bg-white outline-none focus:ring-1 focus:ring-blue-400"
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={open}
+      title="Clicca per rinominare"
+      className={cn("cursor-pointer hover:bg-white hover:shadow-sm rounded px-1 py-0.5 transition-all", bgClass, textClass)}
+    >
+      {value || <span className="text-gray-300">—</span>}
+    </div>
+  );
+};
+
 // ─── Project Detail ───────────────────────────────────────────
 const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
   const { toast } = useToast();
@@ -650,6 +728,20 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
     const v = parseFloat(value) || 0;
     await supabase.from('project_periods').update({ [DB_FIELD[field]]: v }).eq('id', periodId);
     setCostsMap(prev => ({ ...prev, [periodId]: { ...prev[periodId], [field]: v } }));
+  };
+
+  const savePeriodLabel = async (periodId, label) => {
+    const { error } = await supabase.from('project_periods').update({ label }).eq('id', periodId);
+    if (error) { toast({ title: 'Errore', description: error.message, variant: 'destructive' }); return; }
+    setPeriods(prev => prev.map(p => p.id === periodId ? { ...p, label } : p));
+    toast({ title: `Periodo rinominato in ${label}` });
+  };
+
+  const savePeriodDuration = async (periodId, duration_months) => {
+    const { error } = await supabase.from('project_periods').update({ duration_months }).eq('id', periodId);
+    if (error) { toast({ title: 'Errore', description: error.message, variant: 'destructive' }); return; }
+    setPeriods(prev => prev.map(p => p.id === periodId ? { ...p, duration_months } : p));
+    toast({ title: `Durata aggiornata a ${duration_months} mesi` });
   };
 
   const handleEditSave = async (payload) => {
@@ -1047,7 +1139,11 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
                   <tr key={period.id} className={cn("group border-b border-gray-100 hover:bg-yellow-50/30 transition-colors", idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40')}>
                     <td className="sticky left-0 bg-inherit px-2 py-1.5 font-bold text-blue-600 border-r border-gray-200">
                       <div className="flex items-center justify-between gap-1">
-                        <span>{period.label}</span>
+                        <EditableText
+                          value={period.label}
+                          onSave={v => savePeriodLabel(period.id, v)}
+                          textClass="font-bold text-blue-600"
+                        />
                         <button
                           onClick={() => setDeletingPeriod({ id: period.id, label: period.label })}
                           className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity p-0.5 rounded"
@@ -1057,7 +1153,13 @@ const ProjectDetail = ({ project, onProjectUpdated, onProjectDeleted }) => {
                         </button>
                       </div>
                     </td>
-                    <td className="text-center px-2 py-1.5 text-gray-500 border-r border-gray-200">{period.duration_months}</td>
+                    <td className="px-1 py-1 border-r border-gray-200">
+                      <EditableInt
+                        value={period.duration_months}
+                        onSave={v => savePeriodDuration(period.id, v)}
+                        textClass="text-gray-500"
+                      />
+                    </td>
 
                     {consultants.map(c => (
                       <td key={c.id} className="px-1 py-1 border-r border-blue-100">

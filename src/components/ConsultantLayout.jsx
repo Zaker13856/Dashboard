@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, LayoutDashboard, Clock, WalletCards, BookOpen } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, WalletCards, BookOpen } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -18,7 +18,6 @@ const ConsultantLayout = ({ children }) => {
 
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/consultant' },
-    { label: 'Timesheet', icon: Clock, path: '/consultant/timesheet' },
     { label: 'Spese', icon: WalletCards, path: '/consultant/expenses' },
     { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
   ];
