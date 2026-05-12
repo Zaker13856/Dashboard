@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, AlertCircle, X, Archive } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle, Loader2, AlertCircle, X, Archive, Edit2, Trash2, Check, FileSpreadsheet } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
+import { useToast } from '@/components/ui/use-toast';
+import { exportConsultantTimesheet } from '@/lib/timesheetExport';
 
 const MONTH_NAMES_IT = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -29,6 +31,7 @@ const nextLocalId = () => `local_${++localIdCounter}`;
 const TimesheetMonthForm = () => {
   const { user } = useAuth();
   const { projects } = useTimesheet();
+  const { toast } = useToast();
 
   const now = new Date();
   const [selectedYear, setSelectedYear]   = useState(now.getFullYear());
@@ -52,6 +55,10 @@ const TimesheetMonthForm = () => {
   const [showNewActivity, setShowNewActivity] = useState(false);
   const [newActivityType, setNewActivityType] = useState('proposta');
   const [newActivityNote, setNewActivityNote] = useState('');
+
+  // Inline edit per riga progetto (Current Month Entries)
+  const [editingProjectLocalId, setEditingProjectLocalId] = useState(null);
+  const [editingProjectHours,   setEditingProjectHours]   = useState('');
 
   const [loading, setLoading]       = useState(true);
   const [saveStatus, setSaveStatus] = useState('idle');
@@ -246,6 +253,22 @@ const TimesheetMonthForm = () => {
     save(fixedHours, projectRows, [...projectRowsToDelete.current], activityHours, activities);
   };
 
+  // ── Export Excel anno corrente (ore / 8 = giorni) ──────────────────────────
+  const handleExport = useCallback(async () => {
+    try {
+      const res = await exportConsultantTimesheet({
+        consultantId:   user.id,
+        consultantName: user.name,
+        year:           selectedYear,
+        projects,
+      });
+      if (res.ok) toast({ title: 'Export completato', description: res.filename });
+      else        toast({ title: 'Errore export', description: res.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Errore export', description: err.message || 'Errore sconosciuto', variant: 'destructive' });
+    }
+  }, [selectedYear, user, projects, toast]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleFixedChange = (field, value) => {
@@ -281,6 +304,23 @@ const TimesheetMonthForm = () => {
     const updated = projectRows.filter(r => r.localId !== localId);
     setProjectRows(updated);
     triggerSave(fixedHours, updated, activityHours);
+  };
+
+  const handleEditProjectStart = (row) => {
+    setEditingProjectLocalId(row.localId);
+    setEditingProjectHours(String(row.hours || ''));
+  };
+
+  const handleEditProjectCancel = () => {
+    setEditingProjectLocalId(null);
+    setEditingProjectHours('');
+  };
+
+  const handleEditProjectSave = (localId) => {
+    const v = parseFloat(editingProjectHours) || 0;
+    handleProjectChange(localId, v);
+    setEditingProjectLocalId(null);
+    setEditingProjectHours('');
   };
 
   const handleActivityHoursChange = (activityId, hours) => {
@@ -376,6 +416,14 @@ const TimesheetMonthForm = () => {
             )}
           </div>
           <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 font-medium"
+            title={`Esporta timesheet ${selectedYear} in Excel (ore/8 = giorni)`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Excel
+          </button>
+          <button
             onClick={handleSaveNow}
             disabled={saveStatus === 'saving'}
             className="px-4 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 font-medium"
@@ -435,26 +483,76 @@ const TimesheetMonthForm = () => {
         </div>
       </div>
 
-      {/* Progetti */}
-      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-2">
-        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-1">Progetti</h3>
+      {/* Current Month Entries */}
+      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 space-y-3">
+        <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Current Month Entries</h3>
+
         {projectRows.length === 0 && (
-          <p className="text-sm text-gray-400">Nessun progetto aggiunto per questo mese.</p>
+          <p className="text-sm text-gray-400 italic">Nessun progetto per questo mese.</p>
         )}
+
         {projectRows.map(row => (
-          <div key={row.localId} className="flex items-center gap-3">
-            <span className="flex-1 text-sm text-gray-700">{row.projectName}</span>
-            <input
-              type="number" min="0" step="0.5"
-              className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
-              value={row.hours}
-              onChange={e => handleProjectChange(row.localId, parseFloat(e.target.value) || 0)}
-            />
-            <button onClick={() => handleProjectDelete(row.localId)} className="text-gray-400 hover:text-red-500 p-1">
-              <X className="w-4 h-4" />
-            </button>
+          <div key={row.localId} className="border rounded-lg p-3 bg-gray-50">
+            <div className="flex justify-between items-center mb-2 border-b pb-2">
+              <span className="font-bold text-gray-700">{row.projectName}</span>
+              <span className="text-sm font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                Total: {(row.hours || 0).toFixed(2)}h
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm bg-white p-2 rounded shadow-sm">
+              {editingProjectLocalId === row.localId ? (
+                <div className="flex items-center gap-2 w-full">
+                  <input
+                    autoFocus type="number" min="0" step="0.5"
+                    className="w-24 rounded-md border border-blue-400 px-2 py-1 text-sm text-right outline-none focus:ring-1 focus:ring-blue-400"
+                    value={editingProjectHours}
+                    onChange={e => setEditingProjectHours(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter')  handleEditProjectSave(row.localId);
+                      if (e.key === 'Escape') handleEditProjectCancel();
+                    }}
+                  />
+                  <button
+                    onClick={() => handleEditProjectSave(row.localId)}
+                    className="text-green-600 hover:bg-green-50 rounded p-1"
+                    title="Salva"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleEditProjectCancel}
+                    className="text-red-600 hover:bg-red-50 rounded p-1"
+                    title="Annulla"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="font-mono text-gray-600">{row.hours || 0}h</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleEditProjectStart(row)}
+                      className="text-gray-400 hover:text-blue-600 p-1 rounded"
+                      title="Modifica ore"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleProjectDelete(row.localId)}
+                      className="text-gray-400 hover:text-red-600 p-1 rounded"
+                      title="Elimina riga"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         ))}
+
+        {/* Selettore per aggiungere progetto */}
         <div className="flex items-center gap-2 pt-1">
           <select
             className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm bg-white"

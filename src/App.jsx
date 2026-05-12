@@ -11,7 +11,6 @@ import ConsultantsPage from './pages/ConsultantsPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ReportsPage from './pages/ReportsPage';
 import ConsultantHome from './pages/ConsultantHome';
-import ConsultantTimesheetPage from './pages/ConsultantTimesheetPage';
 import ConsultantExpensesPage from './pages/ConsultantExpensesPage';
 import { AuthProvider } from './context/AuthContext';
 import { TimesheetProvider } from './context/TimesheetContext';
@@ -40,12 +39,12 @@ function App() {
 
                   {/* Consultant routes */}
                   <Route path="/consultant" element={<ProtectedRoute allowedRoles={['consultant']}><ConsultantHome /></ProtectedRoute>} />
-                  <Route path="/consultant/timesheet" element={<ProtectedRoute allowedRoles={['consultant']}><ConsultantTimesheetPage /></ProtectedRoute>} />
                   <Route path="/consultant/expenses" element={<ProtectedRoute allowedRoles={['consultant']}><ConsultantExpensesPage /></ProtectedRoute>} />
 
                   {/* Legacy redirects */}
                   <Route path="/admin-dashboard" element={<Navigate to="/admin" replace />} />
                   <Route path="/consultant-dashboard" element={<Navigate to="/consultant" replace />} />
+                  <Route path="/consultant/timesheet" element={<Navigate to="/consultant" replace />} />
 
                   <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>

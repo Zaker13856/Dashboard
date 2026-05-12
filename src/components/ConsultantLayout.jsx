@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, LayoutDashboard, Clock, WalletCards } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, WalletCards, BookOpen } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -18,8 +18,8 @@ const ConsultantLayout = ({ children }) => {
 
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/consultant' },
-    { label: 'Timesheet', icon: Clock, path: '/consultant/timesheet' },
     { label: 'Spese', icon: WalletCards, path: '/consultant/expenses' },
+    { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
   ];
 
   return (
@@ -53,22 +53,27 @@ const ConsultantLayout = ({ children }) => {
         {/* Nav bar */}
         <nav className="px-6 flex overflow-x-auto gap-1 border-t border-gray-100 bg-gray-50/50">
           {navItems.map((item) => {
-            const isActive = item.path === '/consultant'
+            const isActive = !item.external && (item.path === '/consultant'
               ? currentPath === '/consultant'
-              : currentPath.startsWith(item.path);
-
+              : currentPath.startsWith(item.path));
+            const className = cn(
+              "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap",
+              isActive
+                ? "border-blue-600 text-blue-600 bg-white"
+                : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 hover:bg-white/50"
+            );
+            const iconEl = <item.icon className={cn("w-4 h-4", isActive ? "text-blue-600" : "text-gray-400")} />;
+            if (item.external) {
+              return (
+                <a key={item.path} href={item.path} target="_blank" rel="noopener noreferrer" className={className}>
+                  {iconEl}
+                  <span>{item.label}</span>
+                </a>
+              );
+            }
             return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap",
-                  isActive
-                    ? "border-blue-600 text-blue-600 bg-white"
-                    : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 hover:bg-white/50"
-                )}
-              >
-                <item.icon className={cn("w-4 h-4", isActive ? "text-blue-600" : "text-gray-400")} />
+              <Link key={item.path} to={item.path} className={className}>
+                {iconEl}
                 <span>{item.label}</span>
               </Link>
             );

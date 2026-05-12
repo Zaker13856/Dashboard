@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import ConsultantLayout from '@/components/ConsultantLayout';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
-import MonthlyHoursForm from '@/components/MonthlyHoursForm';
+import TimesheetMonthForm from '@/components/TimesheetMonthForm';
 import ConsultantExpensesSection from '@/components/ConsultantExpensesSection';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -239,7 +239,7 @@ const ConsultantHome = () => {
               </div>
 
               <div className="lg:col-span-2">
-                <MonthlyHoursForm />
+                <TimesheetMonthForm />
               </div>
             </div>
           </TabsContent>

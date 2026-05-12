@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { UserPlus, Pencil, Trash2 } from 'lucide-react';
+import { UserPlus, Pencil, Trash2, FileSpreadsheet } from 'lucide-react';
+import { exportConsultantTimesheet } from '@/lib/timesheetExport';
 
 const MU_HOURS = 143.33;
 
@@ -89,6 +90,21 @@ const ConsultantsPage = () => {
     setAddOpen(false);
   };
 
+  const handleExportConsultant = async (c) => {
+    try {
+      const year = new Date().getFullYear();
+      const res = await exportConsultantTimesheet({
+        consultantId:   c.id,
+        consultantName: c.name,
+        year,
+      });
+      if (res.ok) toast({ title: 'Export completato', description: res.filename });
+      else        toast({ title: 'Errore export', description: res.message, variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Errore export', description: err.message || 'Errore', variant: 'destructive' });
+    }
+  };
+
   const handleEditSave = async () => {
     if (!editForm.name?.trim()) {
       toast({ title: 'Errore', description: 'Il nome è obbligatorio', variant: 'destructive' });
@@ -164,6 +180,13 @@ const ConsultantsPage = () => {
                   </span>
                 </div>
                 <div className="flex gap-1 ml-2">
+                  <button
+                    onClick={() => handleExportConsultant(c)}
+                    className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
+                    title={`Esporta timesheet ${new Date().getFullYear()} di ${c.name}`}
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => { setEditingConsultant(c); setEditForm({ name: c.name, email: c.email || '', role: c.role || 'consultant', status: c.status || 'active' }); }}
                     className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"

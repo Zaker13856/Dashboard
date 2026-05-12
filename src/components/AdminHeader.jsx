@@ -22,7 +22,7 @@ const AdminHeader = () => {
     { label: 'Consultants', icon: Users, path: '/admin/consultants' },
     { label: 'Reports', icon: BarChart2, path: '/admin/reports' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },
-    { label: 'EU Expert', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
+    { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
   ];
 
   return (
@@ -65,28 +65,27 @@ const AdminHeader = () => {
       {/* Global Navigation Bar */}
       <nav className="px-6 flex overflow-x-auto gap-1 border-t border-gray-100 bg-gray-50/50">
         {navItems.map((item) => {
-          // Check strict equality for dashboard (root admin path), prefix match for others
-          const isActive = item.path === '/admin' 
-            ? currentPath === '/admin' 
-            : currentPath.startsWith(item.path);
-            
-          const cls = cn(
+          const isActive = !item.external && (item.path === '/admin'
+            ? currentPath === '/admin'
+            : currentPath.startsWith(item.path));
+          const className = cn(
             "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap",
             isActive
               ? "border-blue-600 text-blue-600 bg-white"
               : "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 hover:bg-white/50"
           );
+          const iconEl = <item.icon className={cn("w-4 h-4", isActive ? "text-blue-600" : "text-gray-400")} />;
           if (item.external) {
             return (
-              <a key={item.path} href={item.path} target="_blank" rel="noopener noreferrer" className={cls}>
-                <item.icon className="w-4 h-4 text-gray-400" />
+              <a key={item.path} href={item.path} target="_blank" rel="noopener noreferrer" className={className}>
+                {iconEl}
                 <span>{item.label}</span>
               </a>
             );
           }
           return (
-            <Link key={item.path} to={item.path} className={cls}>
-              <item.icon className={cn("w-4 h-4", isActive ? "text-blue-600" : "text-gray-400")} />
+            <Link key={item.path} to={item.path} className={className}>
+              {iconEl}
               <span>{item.label}</span>
             </Link>
           );
