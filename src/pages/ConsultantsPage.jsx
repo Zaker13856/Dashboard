@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { useAuth } from '@/context/AuthContext';
+import { useTimesheet } from '@/context/TimesheetContext';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
@@ -8,9 +9,36 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { UserPlus, Pencil, Trash2, FileSpreadsheet } from 'lucide-react';
+import { UserPlus, Pencil, Trash2, FileSpreadsheet, Euro, CheckCircle2, Timer } from 'lucide-react';
 import { exportConsultantTimesheet } from '@/lib/timesheetExport';
+
+const MONTH_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+const ACTIVITY_LABELS = {
+  ferie: 'Ferie',
+  malattia: 'Malattia',
+  isinnova_comunicazione: 'IS - Comunicazione',
+  isinnova_amministrazione: 'IS - Amministrazione',
+  isinnova_altro: 'IS - Altro',
+};
+
+const KpiCard = ({ icon: Icon, label, value, sub, color }) => (
+  <Card className="relative overflow-hidden border-0 shadow-md bg-white">
+    <div className={`absolute inset-0 opacity-5 ${color.bg}`} />
+    <CardContent className="p-5 flex items-center gap-4">
+      <div className={`p-2.5 rounded-xl ${color.icon}`}>
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">{label}</p>
+        <p className={`text-2xl font-extrabold ${color.text}`}>{value}</p>
+        {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+      </div>
+    </CardContent>
+  </Card>
+);
 
 const MU_HOURS = 143.33;
 
@@ -23,6 +51,7 @@ const EMPTY_ADD_FORM = { name: '', email: '', role: 'consultant', status: 'activ
 
 const ConsultantsPage = () => {
   const { consultants, rates, addConsultant, updateConsultant, deleteConsultant, upsertRate } = useAuth();
+  const { entries, projects } = useTimesheet();
   const { toast } = useToast();
 
   const currentYear = new Date().getFullYear();
@@ -40,6 +69,43 @@ const ConsultantsPage = () => {
   const yearFrom = currentYear - 4;
   const yearTo   = Math.max(maxProjectYear, currentYear);
   const years    = Array.from({ length: yearTo - yearFrom + 1 }, (_, i) => yearFrom + i);
+
+  // ── Detail panel ────────────────────────────────────────────────
+  const [detailConsultant, setDetailConsultant] = useState(null);
+
+  const buildDetailData = (c) => {
+    if (!c) return { kpi: {}, rows: [] };
+    const rate = rates.find(r => r.consultant_id === c.id && r.year === currentYear);
+    const oreMax = rate?.ore_max || 0;
+    const costo  = rate?.costo_aziendale || 0;
+    const tariffa = oreMax > 0 && costo > 0 ? (costo / oreMax).toFixed(2) : null;
+
+    const cEntries = entries.filter(e =>
+      e.consultant_id === c.id && new Date(e.date).getFullYear() === currentYear
+    );
+    const annualTotal = cEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+
+    const rowMap = {};
+    cEntries.forEach(e => {
+      const month = new Date(e.date).getMonth();
+      let key, label;
+      if (e.activity_type === 'project' && e.project_id) {
+        const p = projects.find(p => p.id === e.project_id);
+        key   = `project_${e.project_id}`;
+        label = p?.name || 'Progetto sconosciuto';
+      } else {
+        key   = `act_${e.activity_type}_${e.activity_note || ''}`;
+        label = ACTIVITY_LABELS[e.activity_type] || e.activity_note || e.activity_type;
+      }
+      if (!rowMap[key]) rowMap[key] = { label, monthHours: Array(12).fill(0) };
+      rowMap[key].monthHours[month] += parseFloat(e.hours) || 0;
+    });
+
+    return {
+      kpi: { tariffa, oreMax, annualTotal },
+      rows: Object.values(rowMap),
+    };
+  };
 
   // ── Dialog state ────────────────────────────────────────────────
   const [addOpen,            setAddOpen]            = useState(false);
@@ -171,7 +237,11 @@ const ConsultantsPage = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {consultants.map(c => (
-              <div key={c.id} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm flex justify-between items-start">
+              <div
+                key={c.id}
+                className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm flex justify-between items-start cursor-pointer hover:border-blue-300 hover:shadow-md transition-all"
+                onClick={() => setDetailConsultant(c)}
+              >
                 <div>
                   <p className="font-semibold text-gray-900 text-sm">{c.name}</p>
                   {c.role && <p className="text-xs text-gray-400 mt-0.5 capitalize">{c.role}</p>}
@@ -179,7 +249,7 @@ const ConsultantsPage = () => {
                     {c.status || 'active'}
                   </span>
                 </div>
-                <div className="flex gap-1 ml-2">
+                <div className="flex gap-1 ml-2" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => handleExportConsultant(c)}
                     className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
@@ -294,6 +364,119 @@ const ConsultantsPage = () => {
         </div>
 
       </div>
+
+      {/* ── Dialog: Dettaglio consulente ── */}
+      {detailConsultant && (() => {
+        const { kpi, rows } = buildDetailData(detailConsultant);
+        const annualProgress = kpi.oreMax > 0 ? ((kpi.annualTotal / kpi.oreMax) * 100).toFixed(0) : null;
+        return (
+          <Dialog open={!!detailConsultant} onOpenChange={open => !open && setDetailConsultant(null)}>
+            <DialogContent className="max-w-[95vw] w-[1100px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-bold text-gray-900">
+                  {detailConsultant.name}
+                  {detailConsultant.role && (
+                    <span className="ml-2 text-sm font-normal text-gray-400 capitalize">{detailConsultant.role}</span>
+                  )}
+                </DialogTitle>
+              </DialogHeader>
+
+              {/* KPI */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+                <KpiCard
+                  icon={Euro}
+                  label="Tariffa Anno in Corso"
+                  value={kpi.tariffa ? `€ ${kpi.tariffa}/h` : '—'}
+                  sub={`Tariffario ${currentYear}`}
+                  color={{ bg: 'bg-blue-600', icon: 'bg-blue-600', text: 'text-blue-700' }}
+                />
+                <KpiCard
+                  icon={CheckCircle2}
+                  label="Ore Produttive Annue"
+                  value={kpi.oreMax > 0 ? `${kpi.oreMax} h` : '—'}
+                  sub={`Contratto ${currentYear}`}
+                  color={{ bg: 'bg-emerald-600', icon: 'bg-emerald-500', text: 'text-emerald-700' }}
+                />
+                <KpiCard
+                  icon={Timer}
+                  label="Ore Inserite Timesheet"
+                  value={`${kpi.annualTotal.toFixed(1)} h`}
+                  sub={annualProgress ? `su ${kpi.oreMax} h previste — ${annualProgress}%` : `Anno ${currentYear}`}
+                  color={{ bg: 'bg-purple-600', icon: 'bg-purple-500', text: 'text-purple-700' }}
+                />
+              </div>
+
+              {/* Tabella mensile */}
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Ore per progetto / attività — {currentYear}</h3>
+                {rows.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">Nessuna ora inserita nel {currentYear}</p>
+                ) : (
+                  <div className="relative overflow-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-xs border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="sticky left-0 z-20 bg-gray-50 px-3 py-2 text-left font-medium text-gray-700 border-r border-b border-gray-200 min-w-[180px]">
+                            Progetto / Attività
+                          </th>
+                          {MONTH_SHORT.map(m => (
+                            <th key={m} className="px-2 py-2 text-center font-medium text-gray-600 border-r border-b border-gray-200 min-w-[48px] last:border-r-0">
+                              {m}
+                            </th>
+                          ))}
+                          <th className="px-2 py-2 text-center font-semibold text-gray-700 border-b border-gray-200 min-w-[56px] bg-gray-100">
+                            Tot
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row, idx) => {
+                          const rowTotal = row.monthHours.reduce((s, h) => s + h, 0);
+                          return (
+                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                              <td className={cn(
+                                'sticky left-0 z-10 px-3 py-2 font-medium text-gray-800 border-r border-b border-gray-200',
+                                idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                              )}>
+                                {row.label}
+                              </td>
+                              {row.monthHours.map((h, mi) => (
+                                <td key={mi} className="px-2 py-2 text-center text-gray-600 border-r border-b border-gray-200 last:border-r-0">
+                                  {h > 0 ? h % 1 === 0 ? h : h.toFixed(1) : <span className="text-gray-200">—</span>}
+                                </td>
+                              ))}
+                              <td className="px-2 py-2 text-center font-semibold text-gray-800 border-b border-gray-200 bg-gray-50">
+                                {rowTotal % 1 === 0 ? rowTotal : rowTotal.toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {/* Riga totale */}
+                        <tr className="bg-blue-50 font-semibold">
+                          <td className="sticky left-0 z-10 bg-blue-50 px-3 py-2 text-gray-800 border-r border-t border-gray-300">
+                            Totale
+                          </td>
+                          {MONTH_SHORT.map((_, mi) => {
+                            const colTotal = rows.reduce((s, r) => s + r.monthHours[mi], 0);
+                            return (
+                              <td key={mi} className="px-2 py-2 text-center text-blue-700 border-r border-t border-gray-300 last:border-r-0">
+                                {colTotal > 0 ? (colTotal % 1 === 0 ? colTotal : colTotal.toFixed(1)) : <span className="text-gray-300">—</span>}
+                              </td>
+                            );
+                          })}
+                          <td className="px-2 py-2 text-center text-blue-800 border-t border-gray-300 bg-blue-100">
+                            {kpi.annualTotal % 1 === 0 ? kpi.annualTotal : kpi.annualTotal.toFixed(1)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* ── Dialog: Aggiungi consulente ── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
