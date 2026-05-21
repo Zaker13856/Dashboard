@@ -33,32 +33,38 @@ const TYPE_CONFIG = {
 
 const ExpenseList = () => {
   const { user } = useAuth();
-  const { getExpensesByConsultant, deleteExpense, loading } = useExpenses();
+  const { getExpensesByProjectId, getAllExpenses, deleteExpense, loading } = useExpenses();
   const { projects } = useTimesheet();
   const [expenseToDelete, setExpenseToDelete] = useState(null);
 
-  const projectNameById = useMemo(() => {
-    const map = {};
-    (projects || []).forEach(p => { map[p.id] = p.name; });
-    return map;
-  }, [projects]);
+  // Progetti assegnati al consulente loggato
+  const assignedProjectIds = useMemo(() => {
+    if (!user) return new Set();
+    return new Set(
+      (projects || [])
+        .filter(p => (p.assignedConsultants || []).some(a => a.consultantId === user.id))
+        .map(p => p.id)
+    );
+  }, [projects, user]);
 
-  const expenses = user ? getExpensesByConsultant(user.id).sort((a, b) =>
-    new Date(b.expenseDate) - new Date(a.expenseDate)
-  ) : [];
-
+  // Tutte le spese (di tutti) filtrate per i progetti assegnati
   const grouped = useMemo(() => {
+    if (!user || assignedProjectIds.size === 0) return [];
+    const all = getAllExpenses();
     const map = {};
-    expenses.forEach(e => {
-      const pid = e.project_id;
-      const name = e.project_name || projectNameById[pid] || 'Sconosciuto';
-      if (!map[pid]) map[pid] = { name, items: [] };
-      map[pid].items.push(e);
-    });
+    all
+      .filter(e => assignedProjectIds.has(e.project_id))
+      .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at))
+      .forEach(e => {
+        const pid = e.project_id;
+        const name = e.project_name || (projects || []).find(p => p.id === pid)?.name || 'Sconosciuto';
+        if (!map[pid]) map[pid] = { name, items: [] };
+        map[pid].items.push({ ...e, expenseType: e.type, expenseDate: e.date, amount: parseFloat(e.amount) || 0 });
+      });
     return Object.entries(map)
       .map(([id, data]) => ({ id, ...data }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [expenses, projectNameById]);
+  }, [getAllExpenses, assignedProjectIds, projects, user]);
 
   const handleDelete = (id) => {
     deleteExpense(id);
@@ -108,7 +114,7 @@ const ExpenseList = () => {
 
   if (loading) return <div className="p-4 text-center">Loading expenses...</div>;
 
-  if (expenses.length === 0) {
+  if (grouped.length === 0) {
     return (
       <Card className="bg-gray-50 border-dashed border-2">
         <CardContent className="flex flex-col items-center justify-center py-10 text-gray-500">
@@ -126,9 +132,11 @@ const ExpenseList = () => {
         const proj = (projects || []).find(p => p.id === group.id);
         const soldTravel = parseFloat(proj?.sold_travel) || 0;
         const soldOther  = parseFloat(proj?.sold_other_costs) || 0;
-        const eligByType = t => group.items.filter(e => (e.expenseType || e.type) === t).reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
-        const travelElig = eligByType('travel');
-        const otherElig  = eligByType('other_cost');
+        // Budget totale progetto (tutti i consulenti)
+        const allProjExpenses = getExpensesByProjectId(group.id);
+        const totalEligByType = t => allProjExpenses.filter(e => (e.expenseType || e.type) === t).reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+        const travelElig = totalEligByType('travel');
+        const otherElig  = totalEligByType('other_cost');
         const gSub   = group.items.filter(e => (e.expenseType || e.type) === 'subcontract').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
         const gThird = group.items.filter(e => (e.expenseType || e.type) === 'third_parties').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
         const gEligible = travelElig + otherElig;
@@ -151,10 +159,10 @@ const ExpenseList = () => {
                 <div className="flex items-center gap-4 text-xs flex-wrap justify-end">
                   <div className="flex flex-col items-end gap-0.5">
                     <span className={cn("font-semibold", travelOver ? "text-red-600" : "text-blue-600")}>
-                      Travel eleg: € {fmt(travelElig)}{soldTravel > 0 ? ` / € ${fmt(soldTravel)}` : ''}
+                      Travel eleg: € {fmt(travelElig)}{soldTravel > 0 ? ` / € ${fmt(soldTravel)}` : ''} <span className="text-gray-400 font-normal">(tot. progetto)</span>
                     </span>
                     <span className={cn("font-semibold", otherOver ? "text-red-600" : "text-amber-600")}>
-                      Other eleg: € {fmt(otherElig)}{soldOther > 0 ? ` / € ${fmt(soldOther)}` : ''}
+                      Other eleg: € {fmt(otherElig)}{soldOther > 0 ? ` / € ${fmt(soldOther)}` : ''} <span className="text-gray-400 font-normal">(tot. progetto)</span>
                     </span>
                   </div>
                   {gSub   > 0 && <span className="text-purple-600 font-semibold">Sub: € {fmt(gSub)}</span>}
@@ -214,32 +222,34 @@ const ExpenseList = () => {
                           <td className="px-3 py-2 text-right text-red-600">{e.iva ? fmt(e.iva) : '—'}</td>
                           <td className="px-3 py-2 text-right font-semibold text-green-700">{e.eligible_amount ? fmt(e.eligible_amount) : '—'}</td>
                           <td className="px-3 py-1">
-                            <AlertDialog open={expenseToDelete === e.id} onOpenChange={(open) => !open && setExpenseToDelete(null)}>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                  onClick={() => setExpenseToDelete(e.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Questa azione non può essere annullata. La spesa verrà rimossa permanentemente.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Annulla</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDelete(e.id)} className="bg-red-600 hover:bg-red-700">
-                                    Elimina Spesa
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            {e.consultant_id === user?.id && (
+                              <AlertDialog open={expenseToDelete === e.id} onOpenChange={(open) => !open && setExpenseToDelete(null)}>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                    onClick={() => setExpenseToDelete(e.id)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Sei sicuro?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Questa azione non può essere annullata. La spesa verrà rimossa permanentemente.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Annulla</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(e.id)} className="bg-red-600 hover:bg-red-700">
+                                      Elimina Spesa
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
                           </td>
                         </tr>
                       );

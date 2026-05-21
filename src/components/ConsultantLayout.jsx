@@ -68,7 +68,7 @@ const ConsultantLayout = ({ children }) => {
         {/* Top bar */}
         <header className="py-3 px-6 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-wider text-blue-600">ISInnova</h1>
+            <h1 className="text-xl font-bold tracking-wider text-blue-600">ISINNOVA</h1>
             <span className="text-xs text-gray-400 uppercase tracking-widest border-l border-gray-300 pl-2 ml-2">Portale Consulente</span>
           </div>
           <div className="flex items-center gap-4">
