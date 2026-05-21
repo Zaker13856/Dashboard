@@ -47,7 +47,14 @@ const STATUS_COLORS = {
   inactive: 'bg-gray-100 text-gray-500',
 };
 
-const EMPTY_ADD_FORM = { name: '', email: '', role: 'consultant', status: 'active' };
+const TIPO_LABELS = { consulente: 'Consulente', socio: 'Socio', dipendente: 'Dipendente' };
+const TIPO_COLORS = {
+  consulente: 'bg-blue-100 text-blue-700',
+  socio:      'bg-purple-100 text-purple-700',
+  dipendente: 'bg-green-100 text-green-700',
+};
+
+const EMPTY_ADD_FORM = { name: '', email: '', role: 'consultant', status: 'active', tipo: 'consulente', socio_dal: '', qualifica_socio: '' };
 
 const ConsultantsPage = () => {
   const { consultants, rates, addConsultant, updateConsultant, deleteConsultant, upsertRate } = useAuth();
@@ -244,8 +251,16 @@ const ConsultantsPage = () => {
               >
                 <div>
                   <p className="font-semibold text-gray-900 text-sm">{c.name}</p>
-                  {c.role && <p className="text-xs text-gray-400 mt-0.5 capitalize">{c.role}</p>}
-                  <span className={cn('text-[11px] px-2 py-0.5 rounded-full mt-1.5 inline-block font-medium', STATUS_COLORS[c.status] || STATUS_COLORS.inactive)}>
+                  <span className={cn('text-[11px] px-2 py-0.5 rounded-full mt-1 inline-block font-medium', TIPO_COLORS[c.tipo] || TIPO_COLORS.consulente)}>
+                    {TIPO_LABELS[c.tipo] || 'Consulente'}
+                  </span>
+                  {c.tipo === 'socio' && c.qualifica_socio && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">{c.qualifica_socio}</p>
+                  )}
+                  {c.tipo === 'socio' && c.socio_dal && (
+                    <p className="text-[11px] text-gray-400">dal {new Date(c.socio_dal).toLocaleDateString('it-IT')}</p>
+                  )}
+                  <span className={cn('text-[11px] px-2 py-0.5 rounded-full mt-1 inline-block font-medium', STATUS_COLORS[c.status] || STATUS_COLORS.inactive)}>
                     {c.status || 'active'}
                   </span>
                 </div>
@@ -258,7 +273,7 @@ const ConsultantsPage = () => {
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => { setEditingConsultant(c); setEditForm({ name: c.name, email: c.email || '', role: c.role || 'consultant', status: c.status || 'active' }); }}
+                    onClick={() => { setEditingConsultant(c); setEditForm({ name: c.name, email: c.email || '', role: c.role || 'consultant', status: c.status || 'active', tipo: c.tipo || 'consulente', socio_dal: c.socio_dal || '', qualifica_socio: c.qualifica_socio || '' }); }}
                     className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                     title="Modifica"
                   >
@@ -493,25 +508,48 @@ const ConsultantsPage = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Ruolo</Label>
-                <Select value={addForm.role} onValueChange={v => setAddForm(p => ({ ...p, role: v }))}>
+                <Label>Tipo</Label>
+                <Select value={addForm.tipo} onValueChange={v => setAddForm(p => ({ ...p, tipo: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="consultant">Consultant</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="consulente">Consulente</SelectItem>
+                    <SelectItem value="socio">Socio</SelectItem>
+                    <SelectItem value="dipendente">Dipendente</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Stato</Label>
-                <Select value={addForm.status} onValueChange={v => setAddForm(p => ({ ...p, status: v }))}>
+                <Label>Accesso</Label>
+                <Select value={addForm.role} onValueChange={v => setAddForm(p => ({ ...p, role: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Attivo</SelectItem>
-                    <SelectItem value="inactive">Inattivo</SelectItem>
+                    <SelectItem value="consultant">Utente</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            {addForm.tipo === 'socio' && (
+              <div className="grid grid-cols-2 gap-3 border-t pt-3">
+                <div className="space-y-1.5">
+                  <Label>Socio dal</Label>
+                  <Input type="date" value={addForm.socio_dal} onChange={e => setAddForm(p => ({ ...p, socio_dal: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Qualifica Socio</Label>
+                  <Input value={addForm.qualifica_socio} onChange={e => setAddForm(p => ({ ...p, qualifica_socio: e.target.value }))} placeholder="es. Presidente CdA" />
+                </div>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Stato</Label>
+              <Select value={addForm.status} onValueChange={v => setAddForm(p => ({ ...p, status: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Attivo</SelectItem>
+                  <SelectItem value="inactive">Inattivo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -536,25 +574,48 @@ const ConsultantsPage = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Ruolo</Label>
-                <Select value={editForm.role || 'consultant'} onValueChange={v => setEditForm(p => ({ ...p, role: v }))}>
+                <Label>Tipo</Label>
+                <Select value={editForm.tipo || 'consulente'} onValueChange={v => setEditForm(p => ({ ...p, tipo: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="consultant">Consultant</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="consulente">Consulente</SelectItem>
+                    <SelectItem value="socio">Socio</SelectItem>
+                    <SelectItem value="dipendente">Dipendente</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Stato</Label>
-                <Select value={editForm.status || 'active'} onValueChange={v => setEditForm(p => ({ ...p, status: v }))}>
+                <Label>Accesso</Label>
+                <Select value={editForm.role || 'consultant'} onValueChange={v => setEditForm(p => ({ ...p, role: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Attivo</SelectItem>
-                    <SelectItem value="inactive">Inattivo</SelectItem>
+                    <SelectItem value="consultant">Utente</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            {editForm.tipo === 'socio' && (
+              <div className="grid grid-cols-2 gap-3 border-t pt-3">
+                <div className="space-y-1.5">
+                  <Label>Socio dal</Label>
+                  <Input type="date" value={editForm.socio_dal || ''} onChange={e => setEditForm(p => ({ ...p, socio_dal: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Qualifica Socio</Label>
+                  <Input value={editForm.qualifica_socio || ''} onChange={e => setEditForm(p => ({ ...p, qualifica_socio: e.target.value }))} placeholder="es. Presidente CdA" />
+                </div>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Stato</Label>
+              <Select value={editForm.status || 'active'} onValueChange={v => setEditForm(p => ({ ...p, status: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Attivo</SelectItem>
+                  <SelectItem value="inactive">Inattivo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">

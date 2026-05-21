@@ -23,19 +23,17 @@ const ACTIVITY_CATEGORIES = [
   { value: 'altro',      label: 'Altro' },
 ];
 
-const MONTHLY_LIMIT = 160;
 
 let localIdCounter = 0;
 const nextLocalId = () => `local_${++localIdCounter}`;
 
-const TimesheetMonthForm = () => {
-  const { user } = useAuth();
+const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setSelectedMonth }) => {
+  const { user, getOreMaxByConsultantAndYear } = useAuth();
   const { projects } = useTimesheet();
   const { toast } = useToast();
 
-  const now = new Date();
-  const [selectedYear, setSelectedYear]   = useState(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+  const oreMax = getOreMaxByConsultantAndYear(user?.id, selectedYear);
+  const MONTHLY_LIMIT = oreMax > 0 ? Math.round(oreMax / 12) : 143;
 
   const [fixedHours, setFixedHours] = useState({
     ferie: 0, malattia: 0,

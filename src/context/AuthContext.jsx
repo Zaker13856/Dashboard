@@ -24,6 +24,9 @@ const fetchConsultantProfile = async (authUserId) => {
     email: c.email,
     name: c.name,
     role: c.role || 'consultant',
+    tipo: c.tipo || 'consulente',
+    socio_dal: c.socio_dal || null,
+    qualifica_socio: c.qualifica_socio || null,
     isAuthenticated: true,
   };
 };
@@ -132,13 +135,35 @@ export const AuthProvider = ({ children }) => {
     const rate = rates.find(r => r.consultant_id === consultantId && r.year === year);
     return rate?.ore_max || 0;
   };
-  const addConsultant = async ({ name, email, role, status }) => {
+  const addConsultant = async ({ name, email, role, status, tipo, socio_dal, qualifica_socio }) => {
+    // 1. Insert into consultants table
     const { data, error } = await supabase
       .from('consultants')
-      .insert({ name, email: email || null, role: role || 'consultant', status: status || 'active' })
+      .insert({ name, email: email || null, role: role || 'consultant', status: status || 'active', tipo: tipo || 'consulente', socio_dal: socio_dal || null, qualifica_socio: qualifica_socio || null })
       .select()
       .single();
     if (error) return { error: error.message };
+
+    // 2. If email provided, create Supabase Auth user with default password
+    if (email) {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: email.trim(),
+        password: DEFAULT_RESET_PASSWORD,
+        email_confirm: true,
+      });
+      if (authError) {
+        // Consultant row created but auth failed — still return data with warning
+        setConsultants(prev => [...prev, data]);
+        return { data, warning: `Consulente creato ma account login fallito: ${authError.message}` };
+      }
+      // 3. Link auth_user_id back to consultants row
+      await supabase
+        .from('consultants')
+        .update({ auth_user_id: authData.user.id })
+        .eq('id', data.id);
+      data.auth_user_id = authData.user.id;
+    }
+
     setConsultants(prev => [...prev, data]);
     return { data };
   };
@@ -259,7 +284,7 @@ export const AuthProvider = ({ children }) => {
       resetConsultantPassword,
       resetAllConsultantPasswords,
       createAuthForConsultants,
-      DEFAULT_PASSWORD: 'password',
+      DEFAULT_PASSWORD: DEFAULT_RESET_PASSWORD,
     }}>
       {!loading && children}
     </AuthContext.Provider>

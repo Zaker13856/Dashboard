@@ -1,19 +1,59 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, LayoutDashboard, WalletCards, BookOpen } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { LogOut, User, LayoutDashboard, WalletCards, BookOpen, KeyRound } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/customSupabaseClient';
+import { useToast } from '@/components/ui/use-toast';
 
 const ConsultantLayout = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const currentPath = location.pathname;
+
+  const [pwOpen, setPwOpen] = useState(false);
+
+  React.useEffect(() => {
+    const handler = () => setPwOpen(true);
+    document.addEventListener('open-change-password', handler);
+    return () => document.removeEventListener('open-change-password', handler);
+  }, []);
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPw !== confirmPw) {
+      toast({ title: 'Errore', description: 'Le password non coincidono.', variant: 'destructive' });
+      return;
+    }
+    if (newPw.length < 6) {
+      toast({ title: 'Errore', description: 'Password minimo 6 caratteri.', variant: 'destructive' });
+      return;
+    }
+    setPwLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPw });
+    setPwLoading(false);
+    if (error) {
+      toast({ title: 'Errore', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Password aggiornata', description: 'Nuova password attiva da subito.' });
+      setPwOpen(false);
+      setNewPw('');
+      setConfirmPw('');
+    }
   };
 
   const navItems = [
@@ -34,11 +74,25 @@ const ConsultantLayout = ({ children }) => {
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
-              <p className="text-xs text-gray-500">Consulente</p>
+              <p className="text-xs text-gray-500">{{ consulente: 'Consulente', socio: 'Socio', dipendente: 'Dipendente' }[user?.tipo] || 'Consulente'}</p>
+              {user?.tipo === 'socio' && user?.qualifica_socio && (
+                <p className="text-xs text-purple-600 font-medium">{user.qualifica_socio}</p>
+              )}
+              {user?.tipo === 'socio' && user?.socio_dal && (
+                <p className="text-[11px] text-gray-400">Socio dal {new Date(user.socio_dal).toLocaleDateString('it-IT')}</p>
+              )}
             </div>
             <div className="h-9 w-9 bg-blue-100 rounded-full flex items-center justify-center border border-blue-200 text-blue-700">
               <User className="w-4 h-4" />
             </div>
+            <Button
+              variant="ghost"
+              onClick={() => setPwOpen(true)}
+              className="text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+              title="Cambia password"
+            >
+              <KeyRound className="w-5 h-5" />
+            </Button>
             <Button
               variant="ghost"
               onClick={handleLogout}
@@ -47,6 +101,29 @@ const ConsultantLayout = ({ children }) => {
             >
               <LogOut className="w-5 h-5" />
             </Button>
+
+            <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <KeyRound className="w-5 h-5 text-blue-600" /> Cambia Password
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleChangePassword} className="space-y-4 pt-2">
+                  <div className="space-y-1">
+                    <Label>Nuova password</Label>
+                    <Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••••••" required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Conferma password</Label>
+                    <Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="••••••••" required />
+                  </div>
+                  <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={pwLoading}>
+                    {pwLoading ? 'Salvataggio...' : 'Aggiorna Password'}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </header>
 

@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AlertTriangle, Clock, CalendarDays, TrendingUp,
-  LayoutDashboard, WalletCards, FileText, Euro, Timer, CheckCircle2
+  LayoutDashboard, WalletCards, FileText, Euro, Timer, CheckCircle2, KeyRound
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -65,8 +65,11 @@ const ConsultantHome = () => {
   const currentMonth = currentDate.getMonth();
   const monthName = currentDate.toLocaleString('it-IT', { month: 'long' });
 
-  const { monthly: monthlyLimit } = getConsultantLimits(user.id, currentYear);
-  const monthlyTotal = getMonthlyHours(currentYear, currentMonth, user.id);
+  const [selectedYear, setSelectedYear]   = useState(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+
+  const { monthly: monthlyLimit } = getConsultantLimits(user.id, selectedYear);
+  const monthlyTotal = getMonthlyHours(selectedYear, selectedMonth, user.id);
   const annualTotal  = getAnnualHours(currentYear, user.id);
   const hourlyRate   = getHourlyRateByConsultantAndYear(user.id, currentYear);
   const oreMax       = getOreMaxByConsultantAndYear(user.id, currentYear);
@@ -135,10 +138,14 @@ const ConsultantHome = () => {
                   : <FileText className="w-4 h-4 mr-2" />}
                 Manuale PDF
               </Button>
-              <div className="bg-white/10 border border-white/20 px-4 py-2 rounded-lg flex items-center gap-2 text-white backdrop-blur-sm text-sm font-medium">
-                <Clock className="w-4 h-4 text-blue-200" />
-                {monthName} {currentYear}
-              </div>
+              <Button
+                variant="outline"
+                onClick={() => document.dispatchEvent(new CustomEvent('open-change-password'))}
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20 backdrop-blur-sm"
+              >
+                <KeyRound className="w-4 h-4 mr-2" />
+                Cambia Password
+              </Button>
             </div>
           </div>
         </motion.div>
@@ -201,7 +208,7 @@ const ConsultantHome = () => {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg font-medium flex items-center gap-2">
                       <CalendarDays className="w-5 h-5 text-blue-600" />
-                      Ore Mensili
+                      Ore Mensili — {new Date(selectedYear, selectedMonth).toLocaleString('it-IT', { month: 'long', year: 'numeric' })}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -239,7 +246,12 @@ const ConsultantHome = () => {
               </div>
 
               <div className="lg:col-span-2">
-                <TimesheetMonthForm />
+                <TimesheetMonthForm
+                  selectedYear={selectedYear}
+                  setSelectedYear={setSelectedYear}
+                  selectedMonth={selectedMonth}
+                  setSelectedMonth={setSelectedMonth}
+                />
               </div>
             </div>
           </TabsContent>
