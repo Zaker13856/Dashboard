@@ -81,7 +81,7 @@ const ExpenseList = () => {
         'Tipo': cfg.label,
         'Importo €': parseFloat(e.amount) || 0,
         'IVA €': parseFloat(e.iva) || 0,
-        'Ammissibile €': parseFloat(e.eligible_amount) || 0,
+        'Eleggibile €': parseFloat(e.eligible_amount) || 0,
         'Fattura': e.invoice_ref || '',
         'Pagato il': e.payment_date ? (() => { try { return format(new Date(e.payment_date), 'dd/MM/yyyy'); } catch { return ''; } })() : '',
       };
@@ -94,7 +94,7 @@ const ExpenseList = () => {
       'Tipo': '',
       'Importo €': items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
       'IVA €': items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0),
-      'Ammissibile €': items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0),
+      'Eleggibile €': items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0),
       'Fattura': '',
       'Pagato il': '',
     });
@@ -123,14 +123,17 @@ const ExpenseList = () => {
   return (
     <Accordion type="multiple" className="space-y-3">
       {grouped.map(group => {
-        const sumByType = t => group.items.filter(e => (e.expenseType || e.type) === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-        const gTravel = sumByType('travel');
-        const gOther  = sumByType('other_cost');
-        const gSub    = sumByType('subcontract');
-        const gThird  = sumByType('third_parties');
-        const gEligible = group.items
-          .filter(e => { const t = e.expenseType || e.type; return t === 'travel' || t === 'other_cost'; })
-          .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+        const proj = (projects || []).find(p => p.id === group.id);
+        const soldTravel = parseFloat(proj?.sold_travel) || 0;
+        const soldOther  = parseFloat(proj?.sold_other_costs) || 0;
+        const eligByType = t => group.items.filter(e => (e.expenseType || e.type) === t).reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+        const travelElig = eligByType('travel');
+        const otherElig  = eligByType('other_cost');
+        const gSub   = group.items.filter(e => (e.expenseType || e.type) === 'subcontract').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+        const gThird = group.items.filter(e => (e.expenseType || e.type) === 'third_parties').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+        const gEligible = travelElig + otherElig;
+        const travelOver = soldTravel > 0 && travelElig > soldTravel;
+        const otherOver  = soldOther  > 0 && otherElig  > soldOther;
 
         return (
           <AccordionItem key={group.id} value={group.id} className="border rounded-xl bg-white shadow-sm">
@@ -146,11 +149,16 @@ const ExpenseList = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-4 text-xs flex-wrap justify-end">
-                  {gTravel > 0 && <span className="text-blue-600 font-semibold">Travel: € {fmt(gTravel)}</span>}
-                  {gOther  > 0 && <span className="text-amber-600 font-semibold">Other: € {fmt(gOther)}</span>}
-                  {gSub    > 0 && <span className="text-purple-600 font-semibold">Sub: € {fmt(gSub)}</span>}
-                  {gThird  > 0 && <span className="text-pink-600 font-semibold">3rd: € {fmt(gThird)}</span>}
-                  {gEligible > 0 && <span className="text-green-700 font-bold">Amm: € {fmt(gEligible)}</span>}
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className={cn("font-semibold", travelOver ? "text-red-600" : "text-blue-600")}>
+                      Travel eleg: € {fmt(travelElig)}{soldTravel > 0 ? ` / € ${fmt(soldTravel)}` : ''}
+                    </span>
+                    <span className={cn("font-semibold", otherOver ? "text-red-600" : "text-amber-600")}>
+                      Other eleg: € {fmt(otherElig)}{soldOther > 0 ? ` / € ${fmt(soldOther)}` : ''}
+                    </span>
+                  </div>
+                  {gSub   > 0 && <span className="text-purple-600 font-semibold">Sub: € {fmt(gSub)}</span>}
+                  {gThird > 0 && <span className="text-pink-600 font-semibold">3rd: € {fmt(gThird)}</span>}
                   <span
                     role="button"
                     tabIndex={0}
@@ -176,7 +184,7 @@ const ExpenseList = () => {
                       <th className="px-3 py-2 text-left font-medium">Tipo</th>
                       <th className="px-3 py-2 text-right font-medium">Importo €</th>
                       <th className="px-3 py-2 text-right font-medium">IVA €</th>
-                      <th className="px-3 py-2 text-right font-medium">Ammissibile €</th>
+                      <th className="px-3 py-2 text-right font-medium">Eleggibile €</th>
                       <th className="px-3 py-2 w-10"></th>
                     </tr>
                   </thead>

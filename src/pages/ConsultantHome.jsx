@@ -172,7 +172,7 @@ const ConsultantHome = () => {
         </div>
 
         {/* ── TABS ── */}
-        <Tabs defaultValue="timesheet" className="w-full">
+        <Tabs defaultValue="expenses" className="w-full">
           <TabsList className="grid w-full grid-cols-2 max-w-[400px] mb-6">
             <TabsTrigger value="timesheet" className="flex items-center gap-2">
               <LayoutDashboard className="w-4 h-4" />

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, PlusCircle, Euro, Calendar, Percent, Calculator } from 'lucide-react';
+import { Loader2, PlusCircle, Euro, Calendar, Calculator } from 'lucide-react';
 
 const EXPENSE_TYPES = [
   'Transportation',
@@ -249,7 +249,6 @@ const ExpenseForm = () => {
             <div className="space-y-2">
               <Label htmlFor="iva">IVA (€)</Label>
               <div className="relative">
-                <Percent className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
                 <Input
                   id="iva"
                   type="number"
@@ -258,7 +257,6 @@ const ExpenseForm = () => {
                   placeholder="0.00"
                   value={formData.iva}
                   onChange={(e) => handleChange('iva', e.target.value)}
-                  className="pl-9"
                 />
               </div>
             </div>
