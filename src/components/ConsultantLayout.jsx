@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { LogOut, User, LayoutDashboard, WalletCards, BookOpen, KeyRound } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, WalletCards, BookOpen, KeyRound, Archive } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -60,6 +60,7 @@ const ConsultantLayout = ({ children }) => {
     { label: 'Dashboard', icon: LayoutDashboard, path: '/consultant' },
     { label: 'Spese', icon: WalletCards, path: '/consultant/expenses' },
     { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
+    { label: 'Archivio Storico', icon: Archive, path: 'https://www.isinnova.org/archivio/', external: true },
   ];
 
   return (

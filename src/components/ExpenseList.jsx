@@ -33,27 +33,23 @@ const TYPE_CONFIG = {
 
 const ExpenseList = () => {
   const { user } = useAuth();
-  const { getExpensesByProjectId, getAllExpenses, deleteExpense, loading } = useExpenses();
+  const { getExpensesByConsultant, getExpensesByProjectId, getAllExpenses, deleteExpense, loading } = useExpenses();
   const { projects } = useTimesheet();
   const [expenseToDelete, setExpenseToDelete] = useState(null);
 
-  // Progetti assegnati al consulente loggato
-  const assignedProjectIds = useMemo(() => {
+  // Project IDs dove il consulente ha spese proprie
+  const myProjectIds = useMemo(() => {
     if (!user) return new Set();
-    return new Set(
-      (projects || [])
-        .filter(p => (p.assignedConsultants || []).some(a => a.consultantId === user.id))
-        .map(p => p.id)
-    );
-  }, [projects, user]);
+    return new Set(getExpensesByConsultant(user.id).map(e => e.project_id).filter(Boolean));
+  }, [getExpensesByConsultant, user]);
 
-  // Tutte le spese (di tutti) filtrate per i progetti assegnati
+  // Tutte le spese di quei progetti (tutti i consulenti + admin)
   const grouped = useMemo(() => {
-    if (!user || assignedProjectIds.size === 0) return [];
+    if (!user || myProjectIds.size === 0) return [];
     const all = getAllExpenses();
     const map = {};
     all
-      .filter(e => assignedProjectIds.has(e.project_id))
+      .filter(e => myProjectIds.has(e.project_id))
       .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at))
       .forEach(e => {
         const pid = e.project_id;
@@ -64,7 +60,7 @@ const ExpenseList = () => {
     return Object.entries(map)
       .map(([id, data]) => ({ id, ...data }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [getAllExpenses, assignedProjectIds, projects, user]);
+  }, [getAllExpenses, myProjectIds, projects, user]);
 
   const handleDelete = (id) => {
     deleteExpense(id);
