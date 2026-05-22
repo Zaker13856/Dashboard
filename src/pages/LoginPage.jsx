@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Lock, User, KeyRound, AlertCircle } from 'lucide-react';
+import { User, KeyRound, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
 
@@ -82,12 +82,12 @@ const LoginPage = () => {
         className="w-full max-w-md"
       >
         <Card className="shadow-2xl border-0 overflow-hidden bg-white">
-          <div className="h-2 bg-gradient-to-r from-blue-600 to-purple-600 w-full" />
+          <div className="h-2 w-full" style={{background: 'linear-gradient(to right, #F5A623, #4A90D9, #5CB85C)'}} />
           <CardHeader className="text-center pt-8 pb-4">
-            <div className="mx-auto w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-slate-100">
-              <Lock className="w-8 h-8 text-slate-700" />
+            <div className="mx-auto mb-4">
+              <img src="/isinnova-logo.jpg" alt="ISINNOVA" className="h-16 w-auto mx-auto object-contain" />
             </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">Timesheet Login</CardTitle>
+            <CardTitle className="text-2xl font-bold text-gray-900">DASHBOARD</CardTitle>
             <CardDescription>
               Inserisci le tue credenziali per accedere al sistema
             </CardDescription>

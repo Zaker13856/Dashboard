@@ -63,7 +63,7 @@ export const generateManualPDF = async () => {
 
   const toc = [
     '1. Introduzione',
-    '2. Come Inserire le Ore',
+    '2. Inserimento Ore (prossimamente)',
     '3. Come Inserire le Spese',
     '4. Visualizzazione Dati',
     '5. FAQ - Domande Frequenti',
@@ -155,18 +155,24 @@ export const generateManualPDF = async () => {
   bullet('Monitoraggio in tempo reale dei limiti mensili e annuali.');
   bullet('Gestione centralizzata dei rimborsi spesa.');
 
-  // 2. Come Inserire le Ore
+  // 2. Inserimento Ore (prossimamente)
   addPage();
-  sectionHeader('2. Come Inserire le Ore');
-  body('L\'inserimento delle ore avviene tramite la sezione "Timesheet" della tua dashboard principale.');
-  y += 2;
-  subtitle('Passaggi:');
-  numbered(1, 'Seleziona il mese di riferimento dal menu a tendina.');
-  numbered(2, 'Scegli il progetto dal menu "Seleziona Progetto".');
-  numbered(3, 'Inserisci il numero di ore nel campo dedicato.');
-  numbered(4, 'Clicca sul pulsante "Salva Ore".');
+  sectionHeader('2. Inserimento Ore');
   y += 4;
-  tip('Assicurati di non superare il tuo limite mensile. Il sistema mostrera\' un avviso se ti avvicini alla soglia.');
+  pdf.setFillColor(239, 246, 255);
+  pdf.setDrawColor(37, 99, 235);
+  const comingSoonLines = pdf.splitTextToSize('Questa funzionalita\' e\' attualmente in fase di sviluppo e sara\' disponibile a breve. Non e\' ancora possibile inserire le ore tramite il sistema.', TW - 12);
+  const comingSoonH = comingSoonLines.length * 6 + 16;
+  pdf.roundedRect(ML, y, TW, comingSoonH, 3, 3, 'FD');
+  pdf.setFontSize(12);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(37, 99, 235);
+  pdf.text('Prossimamente', ML + 4, y + 8);
+  pdf.setFontSize(11);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(30, 64, 175);
+  pdf.text(comingSoonLines, ML + 4, y + 16);
+  y += comingSoonH + 6;
 
   // 3. Come Inserire le Spese
   addPage();
@@ -178,6 +184,9 @@ export const generateManualPDF = async () => {
   numbered(2, 'Scegli la categoria della spesa (es. Viaggio, Alloggio, Pasti).');
   numbered(3, 'Inserisci la data e l\'importo.');
   numbered(4, 'Carica una ricevuta (se richiesto) e clicca "Aggiungi Spesa".');
+  numbered(5, 'Una volta inserite tutte le spese, clicca sul pulsante "Scarica XLS" per esportare il riepilogo in formato Excel. Invia il file XLS a gcali@isinnova.org per la rendicontazione.');
+  y += 4;
+  tip('Ricorda: l\'invio del file XLS a gcali@isinnova.org e\' obbligatorio per completare la rendicontazione delle spese.');
 
   // 4. Visualizzazione Dati
   addPage();
@@ -216,7 +225,7 @@ export const generateManualPDF = async () => {
   pdf.setTextColor(30, 41, 59);
   pdf.text('Email:', ML + 6, y + 10);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('admin@isinnova.it', ML + 24, y + 10);
+  pdf.text('dzaini@isinnova.org', ML + 24, y + 10);
   pdf.setFont('helvetica', 'bold');
   pdf.text('Orari:', ML + 6, y + 20);
   pdf.setFont('helvetica', 'normal');
