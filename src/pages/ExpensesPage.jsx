@@ -9,9 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users } from 'lucide-react';
+import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users, Pencil, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import * as XLSX from 'xlsx';
 
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -24,10 +26,10 @@ const TYPE_CONFIG = {
 };
 
 // ─── Quick Add Form ──────────────────────────────────────────
-const QuickAddForm = ({ projects, type, onSaved }) => {
+const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
   const { toast } = useToast();
   const today = new Date().toISOString().split('T')[0];
-  const [form, setForm] = useState({ project_id: '', date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '' });
+  const [form, setForm] = useState({ project_id: '', date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '', days: '', consultant_id: '' });
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const handleSubmit = async (e) => {
@@ -50,6 +52,8 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
       invoice_ref:     form.invoice_ref || null,
       iva:             iva,
       eligible_amount: elig,
+      days:            type === 'travel' ? (parseInt(form.days) || null) : null,
+      consultant_id:   type === 'travel' ? (form.consultant_id || null) : null,
     };
 
     const { error } = await supabase.from('expenses').insert(record);
@@ -58,7 +62,7 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
       return;
     }
     toast({ title: 'Spesa registrata' });
-    setForm({ project_id: form.project_id, date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '' });
+    setForm({ project_id: form.project_id, date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '', days: '', consultant_id: '' });
     window.dispatchEvent(new CustomEvent('expenses:updated'));
     onSaved();
   };
@@ -101,6 +105,24 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
         </div>
       )}
 
+      {type === 'travel' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-gray-500">Giorni missione</Label>
+            <Input type="number" min="1" placeholder="es. 2" value={form.days} onChange={e => f('days', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-gray-500">Consulente</Label>
+            <Select value={form.consultant_id} onValueChange={v => f('consultant_id', v)}>
+              <SelectTrigger><SelectValue placeholder="— nessuno —" /></SelectTrigger>
+              <SelectContent>
+                {consultants.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       {(type === 'subcontract' || type === 'third_parties') && (
         <div className="space-y-1">
           <Label className="text-xs font-semibold text-gray-500">Fornitore *</Label>
@@ -133,19 +155,27 @@ const QuickAddForm = ({ projects, type, onSaved }) => {
 
 // ─── Main Page ───────────────────────────────────────────────
 const ExpensesPage = () => {
-  const [expenses,  setExpenses]  = useState([]);
-  const [projects,  setProjects]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
+  const [expenses,     setExpenses]     = useState([]);
+  const [projects,     setProjects]     = useState([]);
+  const [consultants,  setConsultants]  = useState([]);
+  const [loading,      setLoading]      = useState(true);
   const [search,    setSearch]    = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [expenseToEdit, setExpenseToEdit] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    const [{ data: exp }, { data: prj }] = await Promise.all([
-      supabase.from('expenses').select('*, consultant:consultants(name)').order('date', { ascending: false }),
+    const [{ data: exp }, { data: prj }, { data: cons }] = await Promise.all([
+      supabase.from('expenses').select('*').order('date', { ascending: false }),
       supabase.from('projects').select('id, name').order('name'),
+      supabase.from('consultants').select('id, name').order('name'),
     ]);
-    setExpenses(exp || []);
+    const consMap = {};
+    (cons || []).forEach(c => { consMap[c.id] = c.name; });
+    setExpenses((exp || []).map(e => ({ ...e, consultant_name: e.consultant_id ? (consMap[e.consultant_id] || null) : null })));
     setProjects(prj || []);
+    setConsultants(cons || []);
     setLoading(false);
   }, []);
 
@@ -197,6 +227,56 @@ const ExpensesPage = () => {
     });
     return t;
   }, [filtered]);
+
+  const openEdit = (e) => {
+    setEditForm({
+      date: e.date || '',
+      place: e.place || '',
+      description: e.description || '',
+      type: e.type || 'travel',
+      amount: e.amount ?? '',
+      iva: e.iva ?? '',
+      eligible_amount: e.eligible_amount ?? '',
+      invoice_ref: e.invoice_ref || '',
+      days: e.days ?? '',
+      consultant_id: e.consultant_id || '',
+    });
+    setExpenseToEdit(e);
+  };
+
+  const handleEditField = (k, v) => {
+    setEditForm(prev => {
+      const next = { ...prev, [k]: v };
+      if (k === 'amount' || k === 'iva') {
+        const amt = parseFloat(k === 'amount' ? v : next.amount) || 0;
+        const iva = parseFloat(k === 'iva'    ? v : next.iva)    || 0;
+        next.eligible_amount = parseFloat(Math.max(0, amt - iva).toFixed(2));
+      }
+      return next;
+    });
+  };
+
+  const handleUpdate = async () => {
+    setEditSaving(true);
+    const { error } = await supabase.from('expenses').update({
+      date:            editForm.date || null,
+      place:           editForm.place || null,
+      description:     editForm.description,
+      type:            editForm.type,
+      amount:          parseFloat(editForm.amount) || 0,
+      iva:             parseFloat(editForm.iva) || null,
+      eligible_amount: parseFloat(editForm.eligible_amount) || null,
+      invoice_ref:     editForm.invoice_ref || null,
+      days:            editForm.type === 'travel' ? (parseInt(editForm.days) || null) : null,
+      consultant_id:   editForm.consultant_id || null,
+    }).eq('id', expenseToEdit.id);
+    setEditSaving(false);
+    if (error) { toast({ title: 'Errore', description: error.message, variant: 'destructive' }); return; }
+    setExpenses(prev => prev.map(e => e.id === expenseToEdit.id ? { ...e, ...editForm } : e));
+    setExpenseToEdit(null);
+    toast({ title: 'Spesa aggiornata' });
+    window.dispatchEvent(new CustomEvent('expenses:updated'));
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Eliminare questa spesa?')) return;
@@ -291,7 +371,7 @@ const ExpensesPage = () => {
                 <TabsTrigger value="third_parties" className="flex-1 gap-1"><Users className="w-3 h-3" />3rd Parties</TabsTrigger>
               </TabsList>
               <TabsContent value="travel" className="mt-4">
-                <QuickAddForm projects={projects} type="travel" onSaved={fetchAll} />
+                <QuickAddForm projects={projects} consultants={consultants} type="travel" onSaved={fetchAll} />
               </TabsContent>
               <TabsContent value="other_cost" className="mt-4">
                 <QuickAddForm projects={projects} type="other_cost" onSaved={fetchAll} />
@@ -390,6 +470,7 @@ const ExpensesPage = () => {
                           <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wide text-[10px]">
                             <th className="px-3 py-2 text-left font-medium">Data</th>
                             <th className="px-3 py-2 text-left font-medium">Luogo</th>
+                            <th className="px-3 py-2 text-center font-medium">Gg</th>
                             <th className="px-3 py-2 text-left font-medium">Descrizione</th>
                             <th className="px-3 py-2 text-left font-medium">Tipo</th>
                             <th className="px-3 py-2 text-left font-medium">Consulente</th>
@@ -415,6 +496,11 @@ const ExpensesPage = () => {
                                     </span>
                                   ) : '—'}
                                 </td>
+                                <td className="px-3 py-2 text-center text-gray-700">
+                                  {e.type === 'travel' && e.days ? (
+                                    <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{e.days}</span>
+                                  ) : '—'}
+                                </td>
                                 <td className="px-3 py-2 text-gray-900 font-medium max-w-[200px] truncate" title={e.description}>
                                   {e.description}
                                 </td>
@@ -438,7 +524,7 @@ const ExpensesPage = () => {
                                   </Select>
                                 </td>
                                 <td className="px-3 py-2 text-gray-700 text-[11px]">
-                                  {e.consultant?.name || e.consultant_name || '—'}
+                                  {e.consultant_name || '—'}
                                 </td>
                                 <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(e.amount)}</td>
                                 <td className="px-3 py-2 text-right text-red-600">
@@ -448,13 +534,22 @@ const ExpensesPage = () => {
                                   {e.eligible_amount ? fmt(e.eligible_amount) : '—'}
                                 </td>
                                 <td className="px-3 py-1">
-                                  <button
-                                    onClick={() => handleDelete(e.id)}
-                                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity p-1 rounded"
-                                    title="Elimina"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => openEdit(e)}
+                                      className="text-blue-400 hover:text-blue-600 p-1 rounded"
+                                      title="Modifica"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(e.id)}
+                                      className="text-red-400 hover:text-red-600 p-1 rounded"
+                                      title="Elimina"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -463,7 +558,7 @@ const ExpensesPage = () => {
                         {/* Totale progetto */}
                         <tfoot>
                           <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold text-xs">
-                            <td colSpan={5} className="px-3 py-2 text-gray-700 uppercase tracking-wide">Totale {group.name}</td>
+                            <td colSpan={6} className="px-3 py-2 text-gray-700 uppercase tracking-wide">Totale {group.name}</td>
                             <td className="px-3 py-2 text-right text-gray-900">
                               {fmt(group.items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))}
                             </td>
@@ -485,6 +580,81 @@ const ExpensesPage = () => {
           </Accordion>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!expenseToEdit} onOpenChange={open => !open && setExpenseToEdit(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Modifica Spesa</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Data</Label>
+              <Input type="date" value={editForm.date || ''} onChange={e => handleEditField('date', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Tipo</Label>
+              <Select value={editForm.type || 'travel'} onValueChange={v => handleEditField('type', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="travel">Travel</SelectItem>
+                  <SelectItem value="other_cost">Other Cost</SelectItem>
+                  <SelectItem value="subcontract">Subcontract</SelectItem>
+                  <SelectItem value="third_parties">3rd Parties</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Importo €</Label>
+              <Input type="number" step="0.01" min="0" value={editForm.amount ?? ''} onChange={e => handleEditField('amount', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">IVA €</Label>
+              <Input type="number" step="0.01" min="0" value={editForm.iva ?? ''} onChange={e => handleEditField('iva', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500 text-purple-700">Ammissibile €</Label>
+              <Input type="number" value={editForm.eligible_amount ?? ''} readOnly className="bg-purple-50 text-purple-900 border-purple-200 font-medium" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Luogo</Label>
+              <Input value={editForm.place || ''} onChange={e => handleEditField('place', e.target.value)} placeholder="es. Roma" />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Descrizione</Label>
+              <Textarea value={editForm.description || ''} onChange={e => handleEditField('description', e.target.value)} rows={2} className="resize-none" />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs font-semibold text-gray-500">Rif. Fattura</Label>
+              <Input value={editForm.invoice_ref || ''} onChange={e => handleEditField('invoice_ref', e.target.value)} placeholder="es. fatt. 123/2026" />
+            </div>
+            {editForm.type === 'travel' && (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-gray-500">Giorni missione</Label>
+                  <Input type="number" min="1" value={editForm.days ?? ''} onChange={e => handleEditField('days', e.target.value)} placeholder="es. 2" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-gray-500">Consulente</Label>
+                  <Select value={editForm.consultant_id || ''} onValueChange={v => handleEditField('consultant_id', v)}>
+                    <SelectTrigger><SelectValue placeholder="— nessuno —" /></SelectTrigger>
+                    <SelectContent>
+                      {consultants.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExpenseToEdit(null)} disabled={editSaving}>Annulla</Button>
+            <Button onClick={handleUpdate} disabled={editSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+              {editSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvataggio...</> : 'Salva'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </AdminLayout>
   );
 };

@@ -1,50 +1,84 @@
 
 # Analisi Completa del Codebase - Tracciamento Dati
 
-Questo documento contiene l'analisi dettagliata richiesta sui meccanismi di storage, database esterni, gestione del contesto (Context API) e tracciamento dei dati nell'applicazione.
+Documento aggiornato al 09/06/2026. L'architettura è completamente basata su **Supabase** (PostgreSQL remoto) — nessun localStorage strutturale.
 
-## 1. Ricerca Storage
-L'applicazione fa un uso intensivo e metodico di **`localStorage`** per garantire la persistenza dei dati sul client. Non vi è traccia di `sessionStorage`, `IndexedDB` o `Cookies` per il salvataggio dei dati strutturali.
+## 1. Database Esterno — Supabase
 
-### Chiavi `localStorage` utilizzate:
-**AuthContext.jsx**:
-- `timesheet_consultants`: Salva l'anagrafica, le tariffe orarie e i ruoli dei consulenti.
-- `timesheet_user`: Mantiene la sessione attiva dell'utente loggato.
-- `timesheet_rates_version`: Traccia la versione delle modifiche alle tariffe per forzare i refresh (cache invalidation locale).
+**URL**: `https://yhkzkpntfkzcktxdceri.supabase.co`  
+**Credenziali**: `.env` (non committato su GitHub — va copiato manualmente)
 
-**TimesheetContext.jsx**:
-- `timesheet_projects`: Salva tutti i dati dei progetti, inclusi i budget e le allocazioni dei consulenti (`assignedConsultants`).
-- `timesheet_entries`: Salva tutte le ore lavorate/inserite nei timesheet.
-- `timesheet_limits`: Salva i limiti di ore (mensili/annuali) personalizzati per singolo consulente.
-- `timesheet_history`: Salva lo storico delle modifiche (sebbene parzialmente implementato).
-- `timesheet_years`: Salva l'elenco degli anni gestiti dal sistema (es. 2022-2027).
-- `timesheet_projects_backup_diamond`: Chiave specifica per il recovery dati di un particolare progetto.
+### Tabelle principali
 
-**ExpenseContext.jsx**:
-- `timesheet_expenses`: Spese effettive caricate dai consulenti.
-- `subcontracts`: Costi di subappalto esterni.
-- `otherCosts`: Costi miscellanei di progetto.
-- `plannedExpenses`: Voci di budget preventivate.
+| Tabella | Contenuto |
+|---|---|
+| `projects` | Anagrafica progetti, budget, periodi |
+| `allocations` | Assegnazione consulenti ai progetti (`consultant_id`, `project_id`, ore allocate) |
+| `timesheets` | Ore lavorate per consulente/progetto/mese |
+| `expenses` | Tutte le spese (travel, other_cost, subcontract, third_parties, planned) |
+| `consultants` | Anagrafica consulenti, ruoli, tariffe |
+| `consultant_rates` | Tariffe orarie per anno |
 
-## 2. Ricerca Database Esterno
-Attualmente **NON è presente alcun database esterno collegato**.
-- **Supabase**: Assente. Nessuna inizializzazione (`createClient`), nessuna importazione di `@supabase/supabase-js` nel `package.json`.
-- **Firebase/Pocketbase**: Assenti.
-- **API REST**: Non vi è alcuna chiamata `fetch` o `axios` verso server/backend remoti per la sincronizzazione dei dati. Il progetto è un ambiente frontend isolato e auto-consistente ("Local First").
+### Realtime subscriptions attive
+Tutti i context usano `supabase.channel(...).on('postgres_changes', ...)` — i dati si aggiornano automaticamente senza refresh.
 
-## 3. Analisi Context (Gestione di Stato e Sincronizzazione)
-L'architettura dei dati si basa su React Context API in combinazione con `useEffect` per sincronizzare lo stato in memoria (RAM) con `localStorage` (Disco rigido del browser).
+## 2. Context API — Architettura
 
-- **Inizializzazione (Lettura)**: In ogni Context (`AuthContext`, `TimesheetContext`, `ExpenseContext`), al primo caricamento (mount) viene eseguito un `useEffect` che legge i dati dal `localStorage`. Se le chiavi sono vuote, carica dei dati costanti di default (es. `INITIAL_CONSULTANTS`, `INITIAL_PROJECTS`).
-- **Memoria Volatile**: I dati vengono salvati in variabili di stato React (`useState`), rendendoli estremamente veloci da interrogare tramite l'interfaccia.
-- **Sincronizzazione (Scrittura)**: Ogni volta che la variabile di stato (`projects`, `consultants`, `expenses`) viene modificata (es. tramite l'aggiunta di un progetto), un `useEffect` dipendente da quella variabile entra in azione e fa una sovrascrittura (`localStorage.setItem`) con la versione stringificata (`JSON.stringify()`) del nuovo stato.
+Tre provider in cascata in `App.jsx`:
 
-## 4. Tracciamento Dati (Entità)
+```
+AuthProvider → TimesheetProvider → ExpenseProvider → App
+```
 
-| Entità | Dove viene Creata | Persistenza | Caricamento al Refresh |
-|--------|-------------------|-------------|------------------------|
-| **CONSULTANTS** | `AuthContext.jsx` (funzione `addConsultant`) | `localStorage` (`timesheet_consultants`) | Un `useEffect` in `AuthContext` legge la chiave, unisce eventuali dati di fallback (`INITIAL_CONSULTANTS`) e li salva nello stato `consultants`. |
-| **PROJECTS** | `TimesheetContext.jsx` (funzione `addProject`) | `localStorage` (`timesheet_projects`) | Letto nel mount di `TimesheetContext`. Se assente, carica `INITIAL_PROJECTS`. |
-| **TIMESHEETS** | `TimesheetContext.jsx` (funzione `addEntry`) | `localStorage` (`timesheet_entries`) | Letto nel mount di `TimesheetContext`. Persistente a livello di browser. |
-| **EXPENSES** | `ExpenseContext.jsx` (funzione `addExpense`) | `localStorage` (`timesheet_expenses`, ecc.) | Letto nel mount di `ExpenseContext` da varie chiavi suddivise per tipologia di spesa. |
-| **ALLOCATIONS** | `TimesheetContext.jsx` (funzione `assignConsultant`) | Dentro `localStorage` (`timesheet_projects`) | Le allocazioni non sono un'entità indipendente, ma un array innestato (`assignedConsultants`) dentro gli oggetti progetto. |
+Ognuno:
+1. Fetch da Supabase al mount (`useEffect`)
+2. Mostra spinner finché loading = false (non blocca silenziosamente)
+3. Espone dati e funzioni CRUD via Context
+
+### AuthContext (`src/context/AuthContext.jsx`)
+- Gestisce login/logout/sessione utente (`timesheet_user` in localStorage — unico uso di localStorage)
+- Anagrafica consulenti con tariffe orarie
+- Funzioni: `login`, `logout`, `addConsultant`, `updateConsultant`, `resetConsultantPassword`
+
+### TimesheetContext (`src/context/TimesheetContext.jsx`)
+- Progetti (`projects`), voci ore (`entries`), allocazioni (`allocations`)
+- Funzioni: `addProject`, `updateProject`, `deleteProject`, `addEntry`, `updateEntry`, `deleteEntry`, `assignConsultant`, `removeAssignment`
+- **IMPORTANTE**: `assignedConsultants` NON è una colonna di `projects` — le assegnazioni stanno nella tabella `allocations` (`consultant_id` + `project_id`)
+
+### ExpenseContext (`src/context/ExpenseContext.jsx`)
+- Tutte le spese in `allExpenses`, suddivise per tipo:
+  - `expenses` = travel + third_parties
+  - `subcontracts` = type 'subcontract'
+  - `otherCosts` = type 'other_cost'
+- Funzioni: `addExpense`, `updateExpense`, `deleteExpense`, `addSubcontract`, `addOtherCost`
+
+## 3. Entità e Flusso Dati
+
+| Entità | Creata in | Tabella Supabase | Note |
+|---|---|---|---|
+| **Consulenti** | `AuthContext` (`addConsultant`) | `consultants` | |
+| **Progetti** | `TimesheetContext` (`addProject`) | `projects` | |
+| **Allocazioni** | `TimesheetContext` (`assignConsultant`) | `allocations` | Collega consulenti ↔ progetti |
+| **Timesheet** | `TimesheetContext` (`addEntry`) | `timesheets` | Una riga per mese/consulente/tipo |
+| **Spese** | `ExpenseContext` (`addExpense`) | `expenses` | Tipo determina categoria |
+
+## 4. Routing
+
+`BrowserRouter` con route protette per ruolo:
+- `/login` — pubblica
+- `/admin/*` — solo ruolo `admin`
+- `/consultant/*` — solo ruolo `consultant`
+
+**SPA routing su Hostinger**: `.htaccess` con `RewriteRule` + `ErrorDocument 404 /index.html`.
+
+## 5. Deploy
+
+Script FTP: `scripts/deploy-ftp.cjs`  
+Comando: `node scripts/deploy-ftp.cjs` (eseguire da `Dashboard/`)  
+Target: `ftp.isinnova.cloud` → `/public_html`
+
+Sequenza completa:
+```bash
+npx vite build
+node scripts/deploy-ftp.cjs
+```

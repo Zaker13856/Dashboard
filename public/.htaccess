@@ -1,22 +1,26 @@
+Options -MultiViews
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^ index.html [L]
+  RewriteRule ^ /index.html [L]
 </IfModule>
+
+# Fallback: se mod_rewrite non funziona, serve index.html su qualsiasi 404
+ErrorDocument 404 /index.html
 
 <IfModule mod_headers.c>
   Header set X-Powered-By "Hostinger Horizons"
 
-  # Cache hashed assets aggressively
-  <If "%{REQUEST_URI} =~ m#^/assets/.*$#">
-    Header set Cache-Control "public, max-age=604800, immutable"
-  </If>
-
-  # Never cache index.html (neither browser nor CDN) — always fetch fresh
-  <If "%{REQUEST_URI} =~ m#(^/$|\.html$)#">
+  <Files "index.html">
     Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
     Header set Pragma "no-cache"
-  </If>
+    Header set Expires "Thu, 01 Jan 1970 00:00:00 GMT"
+  </Files>
+
+  <FilesMatch "\.[a-f0-9]{8}\.(js|css)$">
+    Header set Cache-Control "public, max-age=604800, immutable"
+  </FilesMatch>
 </IfModule>

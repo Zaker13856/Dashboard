@@ -15,11 +15,16 @@ export const ExpenseProvider = ({ children }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data } = await supabase.from('expenses').select('*, project:projects(id,name), consultant:consultants(id,name)');
+      const [{ data }, { data: cons }] = await Promise.all([
+        supabase.from('expenses').select('*, project:projects!left(id,name)'),
+        supabase.from('consultants').select('id, name'),
+      ]);
+      const consMap = {};
+      (cons || []).forEach(c => { consMap[c.id] = c.name; });
       if (data) setAllExpenses(data.map(e => ({
         ...e,
         project_name: e.project?.name || null,
-        consultant_name: e.consultant?.name || null,
+        consultant_name: e.consultant_id ? (consMap[e.consultant_id] || null) : null,
       })));
       setLoading(false);
     };
@@ -100,7 +105,7 @@ export const ExpenseProvider = ({ children }) => {
 
   // ── WRITE FUNCTIONS ─────────────────────────────────────────────────────────
 
-  const addExpense = async ({ projectId, consultantId, date, type, amount, iva, eligibleAmount, description }) => {
+  const addExpense = async ({ projectId, consultantId, date, type, amount, iva, eligibleAmount, description, days }) => {
     const payload = {
       project_id: projectId,
       consultant_id: consultantId || null,
@@ -111,6 +116,7 @@ export const ExpenseProvider = ({ children }) => {
     };
     if (iva !== undefined) payload.iva = parseFloat(iva) || 0;
     if (eligibleAmount !== undefined) payload.eligible_amount = parseFloat(eligibleAmount) || 0;
+    if (days != null) payload.days = parseInt(days) || null;
     const { data, error } = await supabase.from('expenses').insert(payload).select().single();
     if (!error && data) setAllExpenses(prev => [...prev, data]);
     return { data, error };
@@ -179,7 +185,15 @@ export const ExpenseProvider = ({ children }) => {
       getExpensesByProjectId, getSubcontractsByProject, getOtherCostsByProject,
       getExpensesByConsultant, getConsultantExpenseStats,
     }}>
-      {!loading && children}
+      {loading ? (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ width: 48, height: 48, border: '4px solid #e5e7eb', borderTop: '4px solid #6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+            <p style={{ color: '#6b7280', fontSize: 14 }}>Caricamento spese...</p>
+          </div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : children}
     </ExpenseContext.Provider>
   );
 };

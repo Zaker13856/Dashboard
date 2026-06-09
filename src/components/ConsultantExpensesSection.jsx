@@ -2,95 +2,125 @@ import React, { useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useExpenses } from '@/context/ExpenseContext';
 import { useTimesheet } from '@/context/TimesheetContext';
-import { useProjectFinancials } from '@/hooks/useProjectFinancials';
 import ExpenseForm from './ExpenseForm';
 import ExpenseList from './ExpenseList';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { motion } from 'framer-motion';
-import { Wallet, ListChecks, Plus, Briefcase, CreditCard, TrendingUp, Users } from 'lucide-react';
+import { ListChecks, Plus, Plane, Receipt, Briefcase, Users } from 'lucide-react';
+
+const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+
+const BudgetRow = ({ icon: Icon, label, consumed, budget, color }) => {
+  const remaining = budget - consumed;
+  const over = budget > 0 && consumed > budget;
+  const pct = budget > 0 ? Math.min(100, (consumed / budget) * 100) : 0;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className={`flex items-center gap-1.5 font-semibold ${color.text}`}>
+          <Icon className="w-3.5 h-3.5" />
+          {label}
+        </span>
+        <div className="flex items-center gap-3 text-right">
+          <span className="text-gray-500">
+            Eleg: <span className={`font-bold ${over ? 'text-red-600' : 'text-gray-900'}`}>€ {fmt(consumed)}</span>
+          </span>
+          {budget > 0 && (
+            <span className={`font-bold ${over ? 'text-red-600' : 'text-green-700'}`}>
+              {over ? `Sforato: € ${fmt(consumed - budget)}` : `Residuo: € ${fmt(remaining)}`}
+            </span>
+          )}
+        </div>
+      </div>
+      {budget > 0 && (
+        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${over ? 'bg-red-500' : color.bar}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TYPE_CFG = {
+  travel:        { label: 'Travel',      icon: Plane,     text: 'text-blue-700',   bar: 'bg-blue-500',   budgetKey: 'sold_travel' },
+  other_cost:    { label: 'Other Costs', icon: Receipt,   text: 'text-amber-700',  bar: 'bg-amber-500',  budgetKey: 'sold_other_costs' },
+  subcontract:   { label: 'Subcontract', icon: Briefcase, text: 'text-purple-700', bar: 'bg-purple-500', budgetKey: 'sold_subcontracting' },
+  third_parties: { label: '3rd Parties', icon: Users,     text: 'text-pink-700',   bar: 'bg-pink-500',   budgetKey: 'sold_third_parties' },
+};
 
 const ConsultantExpensesSection = () => {
   const { user } = useAuth();
-  const { getConsultantExpenseStats } = useExpenses();
-  const { projects } = useTimesheet();
-  const { getProjectFinancials, formatCurrency } = useProjectFinancials();
-  
-  // Get projects assigned to this consultant
-  // Moved useMemo before the conditional return to comply with React Hook rules
-  const assignedProjects = useMemo(() => {
-     if (!user) return [];
-     return projects.filter(p => 
-        (p.assignedConsultants || []).some(a => a.consultantId === user.id)
-     ).map(p => getProjectFinancials(p.id)).filter(Boolean);
-  }, [projects, user, getProjectFinancials]);
+  const { getAllExpenses } = useExpenses();
+  const { projects, allocations } = useTimesheet();
+
+  const myProjectIds = useMemo(() => {
+    if (!user) return new Set();
+    return new Set(
+      (allocations || [])
+        .filter(a => a.consultant_id === user.id)
+        .map(a => a.project_id)
+    );
+  }, [allocations, user]);
+
+  const projectSummaries = useMemo(() => {
+    if (!user || myProjectIds.size === 0) return [];
+    const allExp = getAllExpenses();
+
+    return projects
+      .filter(p => myProjectIds.has(p.id))
+      .map(p => {
+        const projExp = allExp.filter(e => e.project_id === p.id);
+        const consumed = {};
+        Object.keys(TYPE_CFG).forEach(t => {
+          consumed[t] = projExp
+            .filter(e => e.type === t)
+            .reduce((s, e) => s + (parseFloat(e.eligible_amount) || parseFloat(e.amount) || 0), 0);
+        });
+        return { ...p, consumed };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [user, myProjectIds, projects, getAllExpenses]);
 
   if (!user) return null;
-
-  const stats = getConsultantExpenseStats(user.id);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-8"
+      className="space-y-6"
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-purple-100 rounded-full">
-            <Wallet className="w-6 h-6 text-purple-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">Totale Rimborsi</p>
-            <h3 className="text-2xl font-bold text-gray-900">€ {stats.totalAmount.toFixed(2)}</h3>
-          </div>
+      {/* Per-project expense counters */}
+      {projectSummaries.length > 0 && (
+        <div className="space-y-3">
+          {projectSummaries.map(proj => (
+            <div key={proj.id} className="bg-white border rounded-xl shadow-sm p-4 space-y-3">
+              <h3 className="font-bold text-gray-900 text-base border-b pb-2">{proj.name}</h3>
+              <div className="space-y-3">
+                {Object.entries(TYPE_CFG).map(([type, cfg]) => {
+                  const consumed = proj.consumed[type] || 0;
+                  const budget = parseFloat(proj[cfg.budgetKey]) || 0;
+                  return (
+                    <BudgetRow
+                      key={type}
+                      icon={cfg.icon}
+                      label={cfg.label}
+                      consumed={consumed}
+                      budget={budget}
+                      color={{ text: cfg.text, bar: cfg.bar }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-blue-100 rounded-full">
-            <ListChecks className="w-6 h-6 text-blue-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">Numero Spese</p>
-            <h3 className="text-2xl font-bold text-gray-900">{stats.count}</h3>
-          </div>
-        </div>
-      </div>
-
-      {assignedProjects.length > 0 && (
-         <div className="space-y-4">
-             <h3 className="font-bold text-gray-800 text-lg">Assigned Project Financials</h3>
-             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                 {assignedProjects.map(proj => (
-                    <Card key={proj.id} className="border-l-4 border-l-blue-500">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-base font-bold text-gray-900">{proj.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div className="space-y-1">
-                                    <p className="text-xs text-gray-500 flex items-center gap-1"><CreditCard className="w-3 h-3"/> Other Costs (Pln)</p>
-                                    <p className="font-bold text-amber-700">{formatCurrency(proj.expensesBudget)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs text-gray-500 flex items-center gap-1"><TrendingUp className="w-3 h-3"/> Other Costs (Act)</p>
-                                    <p className="font-bold text-amber-600">{formatCurrency(proj.expensesConsumed)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs text-gray-500 flex items-center gap-1"><Briefcase className="w-3 h-3"/> Subcontracts (Pln)</p>
-                                    <p className="font-bold text-purple-700">{formatCurrency(proj.subcontractsBudget)}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <p className="text-xs text-gray-500 flex items-center gap-1"><Users className="w-3 h-3"/> Subcontracts (Act)</p>
-                                    <p className="font-bold text-purple-600">{formatCurrency(proj.subcontractsConsumed)}</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                 ))}
-             </div>
-         </div>
       )}
 
+      {/* Tabs */}
       <Tabs defaultValue="list" className="w-full">
         <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
           <TabsTrigger value="list" className="flex items-center gap-2">
@@ -102,11 +132,11 @@ const ConsultantExpensesSection = () => {
             Carica Spesa
           </TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="list" className="mt-4">
           <ExpenseList />
         </TabsContent>
-        
+
         <TabsContent value="add" className="mt-4">
           <ExpenseForm />
         </TabsContent>

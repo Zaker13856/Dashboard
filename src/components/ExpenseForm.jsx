@@ -31,7 +31,8 @@ const ExpenseForm = () => {
     amount: '',
     iva: '',
     eligibleCosts: 0,
-    description: ''
+    description: '',
+    days: '',
   });
 
   // Calculate Eligible Costs whenever Amount or IVA changes
@@ -114,6 +115,7 @@ const ExpenseForm = () => {
           iva: vatAmount,
           eligibleAmount: formData.eligibleCosts,
           description: descWithCategory,
+          days: parseInt(formData.days) || null,
         });
 
         if (result?.error) {
@@ -137,7 +139,8 @@ const ExpenseForm = () => {
           amount: '',
           iva: '',
           eligibleCosts: 0,
-          description: ''
+          description: '',
+          days: '',
         });
     } catch (e) {
         console.error("Expense submission failed", e);
@@ -259,6 +262,19 @@ const ExpenseForm = () => {
                   onChange={(e) => handleChange('iva', e.target.value)}
                 />
               </div>
+            </div>
+
+            {/* 5b. Days */}
+            <div className="space-y-2">
+              <Label htmlFor="days">Giorni missione</Label>
+              <Input
+                id="days"
+                type="number"
+                min="1"
+                placeholder="es. 2"
+                value={formData.days}
+                onChange={(e) => handleChange('days', e.target.value)}
+              />
             </div>
 
             {/* 6. Eligible Costs (Read Only) */}
