@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen } from 'lucide-react';
+import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen, Archive } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +23,7 @@ const AdminHeader = () => {
     { label: 'Reports', icon: BarChart2, path: '/admin/reports' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },
     { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
+    { label: 'Repository', icon: Archive, path: '/admin/repository' },
   ];
 
   return (

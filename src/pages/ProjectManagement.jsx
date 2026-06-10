@@ -1254,7 +1254,8 @@ const ProjectManagement = () => {
     fetchProjects();
   };
 
-  const filtered = projects.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+  // I progetti archiviati vivono nella pagina Repository
+  const filtered = projects.filter(p => p.status !== 'archived' && p.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <AdminLayout>

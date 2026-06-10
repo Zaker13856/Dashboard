@@ -25,6 +25,47 @@ const TYPE_CONFIG = {
   third_parties: { label: '3rd Parties', color: 'bg-pink-100 text-pink-700 border-pink-200',     icon: Users },
 };
 
+const BUDGET_CFG = {
+  travel:        { label: 'Travel',      icon: Plane,     text: 'text-blue-700',   bar: 'bg-blue-500',   budgetKey: 'sold_travel' },
+  other_cost:    { label: 'Other Costs', icon: Receipt,   text: 'text-amber-700',  bar: 'bg-amber-500',  budgetKey: 'sold_other_costs' },
+  subcontract:   { label: 'Subcontract', icon: Briefcase, text: 'text-purple-700', bar: 'bg-purple-500', budgetKey: 'sold_subcontracting' },
+  third_parties: { label: '3rd Parties', icon: Users,     text: 'text-pink-700',   bar: 'bg-pink-500',   budgetKey: 'sold_third_parties' },
+};
+
+const BudgetBar = ({ icon: Icon, label, consumed, budget, color }) => {
+  const over = budget > 0 && consumed > budget;
+  const pct = budget > 0 ? Math.min(100, (consumed / budget) * 100) : 0;
+  const remaining = budget - consumed;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className={`flex items-center gap-1.5 font-semibold ${color.text}`}>
+          <Icon className="w-3.5 h-3.5" />
+          {label}
+        </span>
+        <div className="flex items-center gap-3 text-right">
+          <span className="text-gray-500">
+            Eleg: <span className={`font-bold ${over ? 'text-red-600' : 'text-gray-900'}`}>€ {fmt(consumed)}</span>
+          </span>
+          {budget > 0 && (
+            <span className={`font-bold ${over ? 'text-red-600' : 'text-green-700'}`}>
+              {over ? `Sforato: € ${fmt(consumed - budget)}` : `Residuo: € ${fmt(remaining)}`}
+            </span>
+          )}
+        </div>
+      </div>
+      {budget > 0 && (
+        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${over ? 'bg-red-500' : color.bar}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Quick Add Form ──────────────────────────────────────────
 const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
   const { toast } = useToast();
@@ -165,17 +206,21 @@ const ExpensesPage = () => {
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
 
+  const [missions, setMissions] = useState([]);
+
   const fetchAll = useCallback(async () => {
-    const [{ data: exp }, { data: prj }, { data: cons }] = await Promise.all([
+    const [{ data: exp }, { data: prj }, { data: cons }, { data: mis }] = await Promise.all([
       supabase.from('expenses').select('*').order('date', { ascending: false }),
-      supabase.from('projects').select('id, name').order('name'),
+      supabase.from('projects').select('id, name, sold_travel, sold_other_costs, sold_subcontracting, sold_third_parties').order('name'),
       supabase.from('consultants').select('id, name').order('name'),
+      supabase.from('missions').select('*'),
     ]);
     const consMap = {};
     (cons || []).forEach(c => { consMap[c.id] = c.name; });
     setExpenses((exp || []).map(e => ({ ...e, consultant_name: e.consultant_id ? (consMap[e.consultant_id] || null) : null })));
     setProjects(prj || []);
     setConsultants(cons || []);
+    setMissions(mis || []);
     setLoading(false);
   }, []);
 
@@ -202,7 +247,13 @@ const ExpensesPage = () => {
     });
   }, [expenses, typeFilter, search, projectMap]);
 
-  // Group by project
+  const missionMap = useMemo(() => {
+    const m = {};
+    missions.forEach(mi => { m[mi.id] = mi; });
+    return m;
+  }, [missions]);
+
+  // Group by project — le voci con mission_id vengono accorpate in una riga per missione
   const grouped = useMemo(() => {
     const map = {};
     filtered.forEach(e => {
@@ -210,10 +261,57 @@ const ExpensesPage = () => {
       if (!map[pid]) map[pid] = { name: projectMap[pid] || 'Sconosciuto', items: [] };
       map[pid].items.push(e);
     });
+
+    const fmtRange = (from, to) => {
+      try {
+        const f = new Date(from), t = new Date(to);
+        if (from === to) return f.toLocaleDateString('it-IT');
+        if (f.getMonth() === t.getMonth() && f.getFullYear() === t.getFullYear()) {
+          return `${f.getDate()}-${t.getDate()}/${String(t.getMonth() + 1).padStart(2, '0')}/${t.getFullYear()}`;
+        }
+        return `${f.toLocaleDateString('it-IT')} - ${t.toLocaleDateString('it-IT')}`;
+      } catch { return ''; }
+    };
+
     return Object.entries(map)
-      .map(([id, data]) => ({ id, ...data }))
+      .map(([id, data]) => {
+        // Aggregate mission rows for display
+        const byMission = {};
+        const displayItems = [];
+        data.items.forEach(e => {
+          if (e.mission_id && missionMap[e.mission_id]) {
+            if (!byMission[e.mission_id]) {
+              const mi = missionMap[e.mission_id];
+              byMission[e.mission_id] = {
+                id: 'mission-' + e.mission_id,
+                _isMission: true,
+                _voci: [],
+                mission: mi,
+                project_id: e.project_id,
+                type: 'travel',
+                date: mi.date_from,
+                date_label: fmtRange(mi.date_from, mi.date_to),
+                place: mi.place,
+                days: Math.round((new Date(mi.date_to) - new Date(mi.date_from)) / 86400000) + 1,
+                consultant_name: e.consultant_name,
+                amount: 0, iva: 0, eligible_amount: 0,
+              };
+              displayItems.push(byMission[e.mission_id]);
+            }
+            const m = byMission[e.mission_id];
+            m._voci.push(e);
+            m.amount += parseFloat(e.amount) || 0;
+            m.iva += parseFloat(e.iva) || 0;
+            m.eligible_amount += parseFloat(e.eligible_amount) || 0;
+          } else {
+            displayItems.push(e);
+          }
+        });
+        displayItems.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        return { id, ...data, displayItems };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [filtered, projectMap]);
+  }, [filtered, projectMap, missionMap]);
 
   // Totali globali
   const totals = useMemo(() => {
@@ -444,13 +542,23 @@ const ExpensesPage = () => {
                           <p className="text-xs text-gray-400">{group.items.length} voci</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4 text-xs">
-                        {gTravel > 0 && <span className="text-blue-600 font-semibold">Travel: € {fmt(gTravel)}</span>}
-                        {gOther  > 0 && <span className="text-amber-600 font-semibold">Other: € {fmt(gOther)}</span>}
-                        {gSub    > 0 && <span className="text-purple-600 font-semibold">Sub: € {fmt(gSub)}</span>}
-                        {gThird  > 0 && <span className="text-pink-600 font-semibold">3rd: € {fmt(gThird)}</span>}
-                        <span className="text-green-700 font-bold">Amm: € {fmt(gEligible)}</span>
-                      </div>
+                      {(() => {
+                        const proj = projects.find(p => p.id === group.id) || {};
+                        const sT = parseFloat(proj.sold_travel) || 0;
+                        const sO = parseFloat(proj.sold_other_costs) || 0;
+                        const sS = parseFloat(proj.sold_subcontracting) || 0;
+                        const s3 = parseFloat(proj.sold_third_parties) || 0;
+                        return (
+                          <div className="flex items-center gap-4 text-xs">
+                            <span className="text-gray-400 font-medium uppercase tracking-wide text-[10px]">Venduto:</span>
+                            <span className="text-blue-600 font-semibold">Travel: € {fmt(sT)}</span>
+                            <span className="text-amber-600 font-semibold">Other: € {fmt(sO)}</span>
+                            <span className="text-purple-600 font-semibold">Sub: € {fmt(sS)}</span>
+                            <span className="text-pink-600 font-semibold">3rd: € {fmt(s3)}</span>
+                            <span className="text-green-700 font-bold">Tot: € {fmt(sT + sO + sS + s3)}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </AccordionTrigger>
                   <div className="flex justify-end px-5 -mt-2 mb-1">
@@ -464,6 +572,32 @@ const ExpensesPage = () => {
                     </Button>
                   </div>
                   <AccordionContent className="px-2 pb-3">
+                    {/* Budget bars (su tutte le spese del progetto, non filtrate) */}
+                    {(() => {
+                      const proj = projects.find(p => p.id === group.id);
+                      if (!proj) return null;
+                      const projExp = expenses.filter(e => e.project_id === group.id);
+                      return (
+                        <div className="space-y-3 px-3 pt-2 pb-5 mb-4 border-b">
+                          {Object.entries(BUDGET_CFG).map(([type, cfg]) => {
+                            const consumed = projExp
+                              .filter(e => e.type === type)
+                              .reduce((s, e) => s + (parseFloat(e.eligible_amount) || parseFloat(e.amount) || 0), 0);
+                            const budget = parseFloat(proj[cfg.budgetKey]) || 0;
+                            return (
+                              <BudgetBar
+                                key={type}
+                                icon={cfg.icon}
+                                label={cfg.label}
+                                consumed={consumed}
+                                budget={budget}
+                                color={{ text: cfg.text, bar: cfg.bar }}
+                              />
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                     <div className="overflow-x-auto rounded-lg border border-gray-200">
                       <table className="w-full text-xs">
                         <thead>
@@ -481,8 +615,36 @@ const ExpensesPage = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {group.items.map(e => {
+                          {(group.displayItems || group.items).map(e => {
                             const cfg = TYPE_CONFIG[e.type] || TYPE_CONFIG.other_cost;
+                            if (e._isMission) {
+                              return (
+                                <tr key={e.id} className="hover:bg-blue-50/40 bg-blue-50/20">
+                                  <td className="px-3 py-2 text-gray-900 font-semibold whitespace-nowrap">{e.date_label}</td>
+                                  <td className="px-3 py-2 text-gray-900 font-semibold">
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-blue-500" />
+                                      {e.place}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{e.days}</span>
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-700 font-medium">
+                                    Nota spese · {e._voci.length} voci
+                                    {e.mission?.travelling_with ? <span className="text-gray-400 font-normal"> — con {e.mission.travelling_with}</span> : null}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Badge variant="outline" className={cn("text-[10px] font-medium", TYPE_CONFIG.travel.color)}>Travel</Badge>
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-700 text-[11px]">{e.consultant_name || '—'}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-gray-900">{fmt(e.amount)}</td>
+                                  <td className="px-3 py-2 text-right text-red-600">{e.iva ? fmt(e.iva) : '—'}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-green-700">{fmt(e.eligible_amount)}</td>
+                                  <td className="px-3 py-1"></td>
+                                </tr>
+                              );
+                            }
                             return (
                               <tr key={e.id} className="hover:bg-gray-50/50 group">
                                 <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
