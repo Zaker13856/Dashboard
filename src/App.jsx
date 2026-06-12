@@ -1,20 +1,30 @@
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Route, Routes, BrowserRouter as Router, Navigate } from 'react-router-dom';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
-import LoginPage from './pages/LoginPage';
-import AdminDashboard from './pages/AdminDashboard';
-import ProjectManagement from './pages/ProjectManagement';
-import ConsultantsPage from './pages/ConsultantsPage';
-import ExpensesPage from './pages/ExpensesPage';
-import ReportsPage from './pages/ReportsPage';
-import ConsultantHome from './pages/ConsultantHome';
-import ConsultantExpensesPage from './pages/ConsultantExpensesPage';
-import ConsultantTimesheetPage from './pages/ConsultantTimesheetPage';
-import RepositoryPage from './pages/RepositoryPage';
 import { AuthProvider } from './context/AuthContext';
+
+// Lazy loading: ogni pagina diventa un chunk separato, il bundle iniziale
+// contiene solo login + shell. Riduce drasticamente il primo caricamento.
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const ProjectManagement = lazy(() => import('./pages/ProjectManagement'));
+const ConsultantsPage = lazy(() => import('./pages/ConsultantsPage'));
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const ConsultantHome = lazy(() => import('./pages/ConsultantHome'));
+const ConsultantExpensesPage = lazy(() => import('./pages/ConsultantExpensesPage'));
+const ConsultantTimesheetPage = lazy(() => import('./pages/ConsultantTimesheetPage'));
+const RepositoryPage = lazy(() => import('./pages/RepositoryPage'));
+const TimesheetsPage = lazy(() => import('./pages/TimesheetsPage'));
+
+const PageLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-500" />
+  </div>
+);
 import { TimesheetProvider } from './context/TimesheetContext';
 import { ExpenseProvider } from './context/ExpenseContext';
 import { MissionProvider } from './context/MissionContext';
@@ -30,6 +40,7 @@ function App() {
               <MissionProvider>
               <ScrollToTop />
               <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+                <Suspense fallback={<PageLoader />}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/" element={<Navigate to="/login" replace />} />
@@ -41,6 +52,7 @@ function App() {
                   <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><ReportsPage /></ProtectedRoute>} />
                   <Route path="/admin/expenses" element={<ProtectedRoute allowedRoles={['admin']}><ExpensesPage /></ProtectedRoute>} />
                   <Route path="/admin/repository" element={<ProtectedRoute allowedRoles={['admin']}><RepositoryPage /></ProtectedRoute>} />
+                  <Route path="/admin/timesheets" element={<ProtectedRoute allowedRoles={['admin']}><TimesheetsPage /></ProtectedRoute>} />
 
                   {/* Consultant routes */}
                   <Route path="/consultant" element={<ProtectedRoute allowedRoles={['consultant']}><ConsultantHome /></ProtectedRoute>} />
@@ -53,6 +65,7 @@ function App() {
 
                   <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>
+                </Suspense>
 
                 <Toaster />
               </div>
