@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen, Archive } from 'lucide-react';
+import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen, Archive, Clock } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +22,7 @@ const AdminHeader = () => {
     { label: 'Consultants', icon: Users, path: '/admin/consultants' },
     { label: 'Reports', icon: BarChart2, path: '/admin/reports' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },
+    { label: 'Timesheets', icon: Clock, path: '/admin/timesheets' },
     { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },
     { label: 'Repository', icon: Archive, path: '/admin/repository' },
   ];
@@ -34,14 +35,14 @@ const AdminHeader = () => {
             <h1 className="text-xl font-bold tracking-wider text-blue-600">HOSTINGER</h1>
             <span className="text-xs text-gray-400 uppercase tracking-widest border-l border-gray-300 pl-2 ml-2">Admin Portal</span>
          </div>
-         
+
          <div className="flex items-center gap-4">
            <Button variant="ghost" size="icon" className="text-gray-500 hover:text-gray-700">
              <Bell className="w-5 h-5" />
            </Button>
-           
+
            <div className="h-6 w-px bg-gray-200 mx-1"></div>
-           
+
            <div className="flex items-center gap-3">
              <div className="text-right hidden sm:block">
                <p className="text-sm font-semibold text-gray-900">{user?.name || 'Admin User'}</p>
@@ -51,9 +52,9 @@ const AdminHeader = () => {
                 <User className="w-4 h-4" />
              </div>
            </div>
-           
-           <Button 
-             variant="ghost" 
+
+           <Button
+             variant="ghost"
              onClick={handleLogout}
              className="ml-2 text-gray-500 hover:text-red-600 hover:bg-red-50"
              title="Logout"
