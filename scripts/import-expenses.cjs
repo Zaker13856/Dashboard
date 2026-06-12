@@ -12,9 +12,19 @@
 
 const XLSX    = require('xlsx');
 const { createClient } = require('@supabase/supabase-js');
+const fs   = require('fs');
+const path = require('path');
+
+const env = Object.fromEntries(
+  fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8')
+    .split(/\r?\n/)
+    .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/))
+    .filter(Boolean)
+    .map((m) => [m[1], m[2]])
+);
 
 const SUPABASE_URL      = 'https://yhkzkpntfkzcktxdceri.supabase.co';
-const SUPABASE_SR_KEY   = 'sb_secret_i3E-N5nZRE00sU8oLDbQKA_DZ9BvH1S'; // service role
+const SUPABASE_SR_KEY   = env.SUPABASE_SERVICE_ROLE_KEY; // service role, da .env
 const supabase          = createClient(SUPABASE_URL, SUPABASE_SR_KEY);
 
 const MU_HOURS = 143.33;

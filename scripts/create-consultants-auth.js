@@ -2,10 +2,23 @@
 // Esegui con: node scripts/create-consultants-auth.js
 
 import { createClient } from '@supabase/supabase-js';
+import { readFileSync } from 'fs';
+
+const env = Object.fromEntries(
+  readFileSync(new URL('../.env', import.meta.url), 'utf8')
+    .split(/\r?\n/)
+    .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/))
+    .filter(Boolean)
+    .map((m) => [m[1], m[2]])
+);
 
 const SUPABASE_URL = 'https://yhkzkpntfkzcktxdceri.supabase.co';
-const SERVICE_ROLE_KEY = 'sb_secret_i3E-N5nZRE00sU8oLDbQKA_DZ9BvH1S';
-const DEFAULT_PASSWORD = 'Sistina42@';
+const SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const DEFAULT_PASSWORD = env.DEFAULT_RESET_PASSWORD;
+if (!SERVICE_ROLE_KEY || !DEFAULT_PASSWORD) {
+  console.error('Servono SUPABASE_SERVICE_ROLE_KEY e DEFAULT_RESET_PASSWORD in .env');
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false }

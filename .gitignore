@@ -9,3 +9,4 @@ dist/
 .claude/
 public/
 scripts/list-ftp.cjs
+backups/

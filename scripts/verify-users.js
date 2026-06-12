@@ -1,8 +1,17 @@
 
 import { createClient } from '@supabase/supabase-js';
+import { readFileSync } from 'fs';
+
+const env = Object.fromEntries(
+  readFileSync(new URL('../.env', import.meta.url), 'utf8')
+    .split(/\r?\n/)
+    .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/))
+    .filter(Boolean)
+    .map((m) => [m[1], m[2]])
+);
 
 const supabaseUrl = 'https://yhkzkpntfkzcktxdceri.supabase.co';
-const supabaseServiceKey = 'sb_secret_i3E-N5nZRE00sU8oLDbQKA_DZ9BvH1S';
+const supabaseServiceKey = env.SUPABASE_SERVICE_ROLE_KEY;
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {

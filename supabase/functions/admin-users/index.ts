@@ -24,7 +24,8 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const defaultPassword = Deno.env.get('DEFAULT_RESET_PASSWORD') ?? 'Sistina42@';
+  const defaultPassword = Deno.env.get('DEFAULT_RESET_PASSWORD');
+  if (!defaultPassword) return json({ error: 'DEFAULT_RESET_PASSWORD non configurata' }, 500);
 
   // Verifica chiamante: JWT valido + ruolo admin nella tabella consultants
   const authHeader = req.headers.get('Authorization') ?? '';
