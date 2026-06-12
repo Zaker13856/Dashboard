@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, supabaseAdmin } from '@/lib/customSupabaseClient';
+import { supabase, invokeAdminUsers } from '@/lib/customSupabaseClient';
 
 const AuthContext = createContext();
 
@@ -53,40 +53,38 @@ export const AuthProvider = ({ children }) => {
   const [rates, setRates] = useState([]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    const loadSessionData = async (session) => {
       if (session?.user) {
         const profile = await fetchConsultantProfile(session.user.id);
         if (!profile) {
           console.error('Auth: session exists but no consultant profile found for', session.user.email);
           await supabase.auth.signOut();
-        } else {
-          setUser(profile);
-          const [all, allRates] = await Promise.all([fetchAllConsultants(), fetchRates()]);
-          setConsultants(all);
-          setRates(allRates);
-        }
-      }
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
-          const profile = await fetchConsultantProfile(session.user.id);
-          if (!profile) {
-            console.error('Auth: session exists but no consultant profile found for', session.user.email);
-            await supabase.auth.signOut();
-            return;
-          }
-          setUser(profile);
-          const [all, allRates] = await Promise.all([fetchAllConsultants(), fetchRates()]);
-          setConsultants(all);
-          setRates(allRates);
-        } else {
           setUser(null);
-          setConsultants([]);
-          setRates([]);
+          return;
         }
+        setUser(profile);
+        const [all, allRates] = await Promise.all([fetchAllConsultants(), fetchRates()]);
+        setConsultants(all);
+        setRates(allRates);
+      } else {
+        setUser(null);
+        setConsultants([]);
+        setRates([]);
+      }
+    };
+
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => loadSessionData(session))
+      .catch((err) => console.error('Auth init failed:', err))
+      .finally(() => setLoading(false));
+
+    // Niente await dentro il callback: chiamate supabase qui dentro causano
+    // deadlock del lock interno di supabase-js (limite documentato).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setTimeout(() => {
+          loadSessionData(session).catch((err) => console.error('Auth state change failed:', err));
+        }, 0);
       }
     );
 
@@ -144,12 +142,11 @@ export const AuthProvider = ({ children }) => {
       .single();
     if (error) return { error: error.message };
 
-    // 2. If email provided, create Supabase Auth user with default password
+    // 2. If email provided, create Supabase Auth user (Edge Function, password default server-side)
     if (email) {
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: authData, error: authError } = await invokeAdminUsers({
+        action: 'create_user',
         email: email.trim(),
-        password: DEFAULT_RESET_PASSWORD,
-        email_confirm: true,
       });
       if (authError) {
         // Consultant row created but auth failed — still return data with warning
@@ -159,9 +156,9 @@ export const AuthProvider = ({ children }) => {
       // 3. Link auth_user_id back to consultants row
       await supabase
         .from('consultants')
-        .update({ auth_user_id: authData.user.id })
+        .update({ auth_user_id: authData.auth_user_id })
         .eq('id', data.id);
-      data.auth_user_id = authData.user.id;
+      data.auth_user_id = authData.auth_user_id;
     }
 
     setConsultants(prev => [...prev, data]);
@@ -210,13 +207,12 @@ export const AuthProvider = ({ children }) => {
   const incrementRatesVersion = () => setRatesVersion(v => v + 1);
   const cleanupStaleRatesData = () => {};
 
-  const DEFAULT_RESET_PASSWORD = 'Sistina42@';
-
   const resetConsultantPassword = async (consultantId) => {
     const consultant = consultants.find(c => c.id === consultantId);
     if (!consultant?.auth_user_id) return { error: 'auth_user_id non trovato per questo consulente' };
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(consultant.auth_user_id, {
-      password: DEFAULT_RESET_PASSWORD,
+    const { error } = await invokeAdminUsers({
+      action: 'reset_password',
+      auth_user_id: consultant.auth_user_id,
     });
     if (error) return { error: error.message };
     return { success: true };
@@ -226,23 +222,19 @@ export const AuthProvider = ({ children }) => {
     const without = consultants.filter(c => !c.auth_user_id && c.email);
     const results = [];
     for (const c of without) {
-      const { data, error } = await supabaseAdmin.auth.admin.createUser({
-        email: c.email,
-        password: DEFAULT_RESET_PASSWORD,
-        email_confirm: true,
-      });
+      const { data, error } = await invokeAdminUsers({ action: 'create_user', email: c.email });
       if (error) {
         results.push({ name: c.name, email: c.email, error: error.message });
         continue;
       }
       const { error: updateError } = await supabase
         .from('consultants')
-        .update({ auth_user_id: data.user.id })
+        .update({ auth_user_id: data.auth_user_id })
         .eq('id', c.id);
       results.push({
         name: c.name,
         email: c.email,
-        auth_user_id: data.user.id,
+        auth_user_id: data.auth_user_id,
         error: updateError?.message || null,
       });
     }
@@ -252,9 +244,7 @@ export const AuthProvider = ({ children }) => {
   const resetAllConsultantPasswords = async () => {
     const withAuth = consultants.filter(c => c.auth_user_id);
     const results = await Promise.all(
-      withAuth.map(c =>
-        supabaseAdmin.auth.admin.updateUserById(c.auth_user_id, { password: DEFAULT_RESET_PASSWORD })
-      )
+      withAuth.map(c => invokeAdminUsers({ action: 'reset_password', auth_user_id: c.auth_user_id }))
     );
     const failed = results.filter(r => r.error);
     if (failed.length > 0) return { success: false, error: `${failed.length} reset falliti` };
@@ -284,7 +274,6 @@ export const AuthProvider = ({ children }) => {
       resetConsultantPassword,
       resetAllConsultantPasswords,
       createAuthForConsultants,
-      DEFAULT_PASSWORD: DEFAULT_RESET_PASSWORD,
     }}>
       {loading ? (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>

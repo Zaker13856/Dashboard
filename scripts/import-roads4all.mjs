@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-const svc = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_SERVICE_ROLE_KEY);
+const svc = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 const { data: prj } = await svc.from('projects').select('id,name').ilike('name', '%roads4all%');
 const PROJ = prj[0].id;

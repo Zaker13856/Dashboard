@@ -2,16 +2,23 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabaseServiceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Client admin con service_role key — necessario per createUser / updateUserById
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+// Operazioni admin (create user, reset password) passano dalla Edge Function
+// 'admin-users': la service_role key non deve MAI entrare nel bundle client.
+export const invokeAdminUsers = async (payload) => {
+  const { data, error } = await supabase.functions.invoke('admin-users', { body: payload });
+  if (error) {
+    let message = error.message;
+    try {
+      const ctx = await error.context?.json();
+      if (ctx?.error) message = ctx.error;
+    } catch { /* risposta non JSON, tengo message generico */ }
+    return { error: { message } };
+  }
+  if (data?.error) return { error: { message: data.error } };
+  return { data };
+};
 
 export default supabase;

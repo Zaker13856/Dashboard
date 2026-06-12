@@ -82,7 +82,7 @@ const AdminPasswordReset = () => {
                 <div>
                   <h3 className="font-bold text-yellow-900">Crea Account Mancanti</h3>
                   <p className="text-sm text-yellow-700 mt-1">
-                    {withoutAuth.length} consulenti senza account Supabase Auth. Password: <code className="bg-white px-2 py-0.5 rounded border border-yellow-200 font-mono text-xs font-bold">Sistina42@</code>
+                    {withoutAuth.length} consulenti senza account Supabase Auth. Verrà assegnata la password default aziendale.
                   </p>
                 </div>
               </div>
@@ -106,7 +106,7 @@ const AdminPasswordReset = () => {
                         ))}
                       </ul>
                       <br />
-                      Password iniziale: <span className="font-mono font-bold">Sistina42@</span>
+                      Password iniziale: quella default aziendale.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -129,7 +129,7 @@ const AdminPasswordReset = () => {
               <div>
                 <h3 className="font-bold text-red-900">Reset Password Bulk</h3>
                 <p className="text-sm text-red-700 mt-1">
-                  Reimposta password di tutti i consulenti a: <code className="bg-white px-2 py-0.5 rounded border border-red-200 font-mono text-xs font-bold">Sistina42@</code>
+                  Reimposta password di tutti i consulenti alla password default aziendale.
                 </p>
               </div>
             </div>
@@ -146,7 +146,7 @@ const AdminPasswordReset = () => {
                     <AlertTriangle className="w-5 h-5 text-red-500" /> Conferma Reset Bulk
                   </AlertDialogTitle>
                   <AlertDialogDescription>
-                    Sovrascrive le password di tutti i consulenti con <span className="font-mono font-bold">Sistina42@</span>.
+                    Sovrascrive le password di tutti i consulenti con quella default aziendale.
                     <br /><br />
                     Agisce solo su consulenti con account già esistente ({consultants.filter(c => c.auth_user_id).length} su {consultants.length}).
                   </AlertDialogDescription>

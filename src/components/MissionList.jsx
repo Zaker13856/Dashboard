@@ -85,6 +85,9 @@ const exportISINNOVA = (mission, expenses, consultantName) => {
   const totalAmt = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
   const totalIva = expenses.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
   const totalElig = expenses.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+  // Rimborso al consulente: speso di tasca propria (carta personale + cash), lordo IVA
+  const totalReimb = expenses.reduce((s, e) =>
+    ['carta_personale', 'cash'].includes(e.payment_method) ? s + (parseFloat(e.amount) || 0) : s, 0);
 
   // Header info as top rows (before the table)
   const headerData = [
@@ -108,6 +111,7 @@ const exportISINNOVA = (mission, expenses, consultantName) => {
     ['', '', '', '', '', '', '', '', '', '', 'Total Expense', fmt(totalAmt)],
     ['', '', '', '', '', '', '', '', '', '', 'Of which Total VAT', fmt(totalIva)],
     ['', '', '', '', '', '', '', '', '', '', 'Total Eligible Costs', fmt(totalElig)],
+    ['', '', '', '', '', '', '', '', '', '', 'Reimbursement', fmt(totalReimb)],
   ];
   XLSX.utils.sheet_add_aoa(ws, summary, { origin: { r: summaryStart, c: 0 } });
 
@@ -317,10 +321,10 @@ const MissionList = ({ projectId = null }) => {
                       onClick={ev => { ev.stopPropagation(); exportISINNOVA(mission, items, user?.email); }}
                       onKeyDown={ev => { if (ev.key === 'Enter') { ev.stopPropagation(); exportISINNOVA(mission, items, user?.email); } }}
                       className="inline-flex items-center gap-1 text-green-700 hover:text-green-800 hover:bg-green-50 border border-green-200 rounded px-2 py-1 text-[11px] font-medium cursor-pointer"
-                      title="Esporta template ISINNOVA"
+                      title="Esporta nota spese in Excel"
                     >
                       <FileSpreadsheet className="w-3.5 h-3.5" />
-                      ISINNOVA
+                      XLS
                     </span>
                     <AlertDialog open={missionToDelete === mission.id} onOpenChange={open => !open && setMissionToDelete(null)}>
                       <AlertDialogTrigger asChild>
