@@ -10,12 +10,12 @@ import { useTimesheet } from '@/context/TimesheetContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import { exportAdminTimesheets } from '@/lib/timesheetExport';
+import { monthlyLimitHours, annualLimitHours, getRegime } from '@/lib/timesheetLimits';
 
 // ── Costanti ────────────────────────────────────────────────────────────────
 const MONTH_SHORT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 const MONTH_FULL = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 const AVAILABLE_YEARS = [2024, 2025, 2026, 2027];
-const FALLBACK_MONTHLY_LIMIT = 143; // ore — usato se ore_max non configurato
 
 // Categoria/etichetta per ogni activity_type, ordine = file XLS individuali
 const TYPE_META = {
@@ -37,7 +37,7 @@ const fmtDays = (hours) => (hours > 0 ? (+(hours / 8).toFixed(2)).toString() : '
 // ── Pagina ──────────────────────────────────────────────────────────────────
 const TimesheetsPage = () => {
   const { entries, projects } = useTimesheet();
-  const { consultants, getOreMaxByConsultantAndYear } = useAuth();
+  const { consultants } = useAuth();
   const { toast } = useToast();
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
@@ -58,11 +58,6 @@ const TimesheetsPage = () => {
     }),
     [entries, year]
   );
-
-  const monthlyLimitFor = (consultantId) => {
-    const oreMax = getOreMaxByConsultantAndYear(consultantId, year);
-    return oreMax > 0 ? Math.round(oreMax / 12) : FALLBACK_MONTHLY_LIMIT;
-  };
 
   // ── Tab 1: Raccolta mensile — consulente × attività × mese (giorni) ──────
   const raccoltaRows = useMemo(() => {
@@ -134,14 +129,14 @@ const TimesheetsPage = () => {
 
     return Object.values(byConsultant)
       .map(row => {
-        const limit = monthlyLimitFor(row.id);
+        const limit = monthlyLimitHours(row.name, year, month);
         const ratio = limit > 0 ? row.total / limit : 0;
         return { ...row, limit, ratio };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [yearEntries, month, sortedConsultants, year]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [yearEntries, month, sortedConsultants, year]);
 
-  // ── Tab 3: Controllo limiti — ore mensili/annuali vs ore_max ─────────────
+  // ── Tab 3: Controllo limiti — ore mensili/annuali vs limite per regime ───
   const limitRows = useMemo(() => {
     return sortedConsultants
       .map(c => {
@@ -150,12 +145,13 @@ const TimesheetsPage = () => {
         const months = Array(12).fill(0);
         cEntries.forEach(e => { months[new Date(e.date).getMonth()] += parseFloat(e.hours || 0); });
         const total = months.reduce((s, h) => s + h, 0);
-        const oreMax = getOreMaxByConsultantAndYear(c.id, year);
-        const monthlyLimit = oreMax > 0 ? Math.round(oreMax / 12) : FALLBACK_MONTHLY_LIMIT;
-        return { id: c.id, name: c.name, months, total, oreMax, monthlyLimit };
+        const regime = getRegime(c.name);
+        const monthLimits = Array.from({ length: 12 }, (_, m) => monthlyLimitHours(c.name, year, m));
+        const annualLimit = annualLimitHours(c.name, year);
+        return { id: c.id, name: c.name, months, total, regime, monthLimits, annualLimit };
       })
       .filter(Boolean);
-  }, [sortedConsultants, yearEntries, getOreMaxByConsultantAndYear, year]);
+  }, [sortedConsultants, yearEntries, year]);
 
   // ── Export aggregato ──────────────────────────────────────────────────────
   const handleExport = () => {
@@ -164,7 +160,6 @@ const TimesheetsPage = () => {
       consultants: sortedConsultants,
       entries,
       projects,
-      getOreMax: getOreMaxByConsultantAndYear,
     });
     if (result.ok) {
       toast({ title: 'Export completato', description: `Scaricato ${result.filename}` });
@@ -366,8 +361,9 @@ const TimesheetsPage = () => {
                   Controllo limiti ({selectedYear})
                 </CardTitle>
                 <CardDescription>
-                  Valori in ORE per confronto diretto con ore_max. Limite mensile = ore_max ÷ 12 (fallback {FALLBACK_MONTHLY_LIMIT}h).
-                  Cella rossa = limite mensile superato.
+                  Controllo sovraccarico, in ORE. Limite mensile per regime: full-time = giorni lavorativi del mese × 8h;
+                  part-time = giorni × (ore_sett ÷ 5); consulenti a monte ore = annuo ÷ 12.
+                  Cella rossa = oltre il limite del mese. Lo "Stato" è sul totale annuo vs limite annuo.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
@@ -376,23 +372,25 @@ const TimesheetsPage = () => {
                     <TableHeader className="bg-gray-50">
                       <TableRow>
                         <TableHead className="font-semibold text-gray-700 min-w-[160px]">Consulente</TableHead>
+                        <TableHead className="font-semibold text-gray-700 min-w-[150px]">Regime</TableHead>
                         {MONTH_SHORT.map(m => (
                           <TableHead key={m} className="font-semibold text-gray-700 text-center">{m}</TableHead>
                         ))}
                         <TableHead className="font-semibold text-gray-900 text-right bg-blue-50/50">Totale ore</TableHead>
-                        <TableHead className="font-semibold text-gray-700 text-right">Ore max</TableHead>
+                        <TableHead className="font-semibold text-gray-700 text-right">Limite anno</TableHead>
                         <TableHead className="font-semibold text-gray-700 text-center">Stato</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {limitRows.length > 0 ? (
                         limitRows.map(row => {
-                          const annualRatio = row.oreMax > 0 ? row.total / row.oreMax : 0;
+                          const annualRatio = row.annualLimit > 0 ? row.total / row.annualLimit : 0;
                           return (
                             <TableRow key={row.id} className="hover:bg-gray-50 transition-colors">
                               <TableCell className="font-medium text-gray-900">{row.name}</TableCell>
+                              <TableCell className="text-xs text-gray-500">{row.regime.label}</TableCell>
                               {row.months.map((h, mIdx) => {
-                                const over = h > row.monthlyLimit;
+                                const over = h > row.monthLimits[mIdx] + 0.01;
                                 return (
                                   <TableCell
                                     key={mIdx}
@@ -406,15 +404,15 @@ const TimesheetsPage = () => {
                                 {row.total.toFixed(1)}
                               </TableCell>
                               <TableCell className="text-right text-gray-500 tabular-nums">
-                                {row.oreMax > 0 ? row.oreMax : '—'}
+                                {row.annualLimit > 0 ? Math.round(row.annualLimit) : '—'}
                               </TableCell>
                               <TableCell className="text-center">
-                                {row.oreMax > 0 ? (
+                                {row.annualLimit > 0 ? (
                                   <span className={`inline-block px-2 py-0.5 rounded-full border text-xs font-medium ${semaforo(annualRatio)}`}>
                                     {(annualRatio * 100).toFixed(0)}%
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-gray-400 italic">no ore_max</span>
+                                  <span className="text-xs text-gray-400 italic">n/a</span>
                                 )}
                               </TableCell>
                             </TableRow>
@@ -422,7 +420,7 @@ const TimesheetsPage = () => {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={16} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={17} className="text-center py-8 text-gray-500">
                             Nessun dato timesheet per il {selectedYear}.
                           </TableCell>
                         </TableRow>
@@ -432,11 +430,4 @@ const TimesheetsPage = () => {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </AdminLayout>
-  );
-};
-
-export default TimesheetsPage;
+          <

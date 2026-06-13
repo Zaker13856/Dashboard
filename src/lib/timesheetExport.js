@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/customSupabaseClient';
+import { annualLimitHours, getRegime } from '@/lib/timesheetLimits';
 
 /**
  * Esporta in XLSX il timesheet di un consulente per l'anno indicato.
@@ -186,10 +187,12 @@ const buildConsultantRows = (consultantEntries, projects) => {
  * @param {Array}    p.consultants  Lista consulenti (id, name)
  * @param {Array}    p.entries      Tutte le righe timesheets visibili (admin = tutte)
  * @param {Array}    p.projects     Lista progetti (id, name)
- * @param {Function} [p.getOreMax]  (consultantId, year) => ore_max
  * @returns {{ ok: boolean, filename?: string, message?: string }}
+ *
+ * NB: il limite annuo proviene dal modulo timesheet (regime FT/PT/monte ore),
+ * NON da ore_max / consultant_rates: il modulo timesheet resta isolato.
  */
-export function exportAdminTimesheets({ year, consultants, entries, projects, getOreMax }) {
+export function exportAdminTimesheets({ year, consultants, entries, projects }) {
   const yearEntries = (entries || []).filter(e => new Date(e.date).getFullYear() === year);
   if (yearEntries.length === 0) {
     return { ok: false, message: `Nessuna riga timesheet per il ${year}.` };
@@ -204,18 +207,20 @@ export function exportAdminTimesheets({ year, consultants, entries, projects, ge
     const months = Array(12).fill(0);
     cEntries.forEach(e => { months[new Date(e.date).getMonth()] += parseFloat(e.hours || 0); });
     const totalHours = months.reduce((s, h) => s + h, 0);
-    const oreMax = getOreMax ? getOreMax(c.id, year) : 0;
+    const regime = getRegime(c.name);
+    const limiteAnno = annualLimitHours(c.name, year);
 
     const row = { 'Consulente': c.name };
     months.forEach((h, i) => { row[MONTHS_IT[i]] = h > 0 ? +(h / 8).toFixed(2) : ''; });
     row['TOTALE giorni'] = totalHours > 0 ? +(totalHours / 8).toFixed(2) : '';
     row['Totale ore'] = totalHours > 0 ? +totalHours.toFixed(1) : '';
-    row['Ore max'] = oreMax || '';
-    row['Δ ore'] = oreMax ? +(oreMax - totalHours).toFixed(1) : '';
+    row['Regime'] = regime.label;
+    row['Limite anno (h)'] = limiteAnno ? Math.round(limiteAnno) : '';
+    row['Δ ore'] = limiteAnno ? +(limiteAnno - totalHours).toFixed(1) : '';
     return row;
   });
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-  wsSummary['!cols'] = [{ wch: 25 }, ...Array(12).fill({ wch: 9 }), { wch: 12 }, { wch: 10 }, { wch: 9 }, { wch: 9 }];
+  wsSummary['!cols'] = [{ wch: 25 }, ...Array(12).fill({ wch: 9 }), { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 13 }, { wch: 9 }];
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Riepilogo');
 
   // ── Un foglio per consulente con righe nell'anno ──
@@ -242,13 +247,4 @@ export function exportAdminTimesheets({ year, consultants, entries, projects, ge
     let sheetName = safeSheetName(c.name);
     let suffix = 2;
     while (usedNames.has(sheetName)) {
-      sheetName = `${safeSheetName(c.name).slice(0, 28)}_${suffix++}`;
-    }
-    usedNames.add(sheetName);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  });
-
-  const filename = `Timesheet_ISINNOVA_${year}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  return { ok: true, filename };
-}
+      sheetName = `${
