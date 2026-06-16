@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
 import { useExpenses } from '@/context/ExpenseContext';
 import { useMissions } from '@/context/MissionContext';
+import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Plus, Trash2, MapPin, Calendar, Users, FileText, Euro, Calculator } from 'lucide-react';
+import { Loader2, Plus, Trash2, MapPin, Calendar, Users, FileText, Paperclip, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const PAYMENT_METHODS = [
@@ -42,10 +43,12 @@ const MissionForm = () => {
   const { user } = useAuth();
   const { projects } = useTimesheet();
   const { addExpense } = useExpenses();
-  const { createMission } = useMissions();
+  const { createMission, updateMission } = useMissions();
   const { toast } = useToast();
+  const fileInputRef = useRef(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [files, setFiles] = useState([]);
 
   const [header, setHeader] = useState({
     projectId: '',
@@ -168,9 +171,31 @@ const MissionForm = () => {
       }
 
       if (!hasError) {
+        // Upload allegati se presenti
+        if (files.length > 0) {
+          const paths = [];
+          for (const file of files) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `${user.id}/${mission.id}/${safeName}`;
+            const { error: uploadErr } = await supabase.storage
+              .from('scontrini')
+              .upload(path, file, { upsert: true });
+            if (!uploadErr) {
+              paths.push(path);
+            } else {
+              toast({ title: `Upload fallito: ${file.name}`, description: uploadErr.message, variant: 'destructive' });
+            }
+          }
+          if (paths.length > 0) {
+            await updateMission(mission.id, { receipt_paths: paths });
+          }
+        }
+
         toast({ title: 'Nota Spese salvata', description: `${validRows.length} voci registrate per ${header.place}.` });
         setHeader({ projectId: '', place: '', dateFrom: '', dateTo: '', travellingWith: '' });
         setRows([emptyRow()]);
+        setFiles([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     } catch (err) {
       console.error('Mission submit error', err);
@@ -424,6 +449,51 @@ const MissionForm = () => {
               Aggiungi voce
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── ALLEGATI ─────────────────────────────────── */}
+      <Card className="shadow-md border-dashed border-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Paperclip className="w-4 h-4 text-gray-600" />
+            Allegati scontrini (opzionale)
+          </CardTitle>
+          <CardDescription>PDF, JPG, PNG — biglietti, ricevute, scontrini</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-center gap-3 cursor-pointer border-2 border-dashed border-gray-200 rounded-lg p-4 hover:border-purple-400 hover:bg-purple-50/30 transition-colors">
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={e => setFiles(Array.from(e.target.files))}
+            />
+            <Upload className="w-5 h-5 text-gray-400 shrink-0" />
+            <span className="text-sm text-gray-500">
+              {files.length === 0 ? 'Clicca per selezionare file' : `${files.length} file selezionati`}
+            </span>
+          </label>
+          {files.length > 0 && (
+            <ul className="space-y-1">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs text-gray-600">
+                  <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                  <span className="text-gray-400 shrink-0">({(f.size / 1024).toFixed(0)} KB)</span>
+                  <button
+                    type="button"
+                    onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
+                    className="ml-auto text-red-400 hover:text-red-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

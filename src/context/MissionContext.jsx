@@ -57,6 +57,14 @@ export const MissionProvider = ({ children }) => {
     return { data, error };
   };
 
+  const updateMission = async (id, updates) => {
+    const { data, error } = await supabase.from('missions').update(updates).eq('id', id).select('*').single();
+    if (!error && data) {
+      setMissions(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+    }
+    return { data, error };
+  };
+
   const deleteMission = async (id) => {
     const { error } = await supabase.from('missions').delete().eq('id', id);
     if (!error) setMissions(prev => prev.filter(m => m.id !== id));
@@ -73,6 +81,7 @@ export const MissionProvider = ({ children }) => {
       missions,
       loading,
       createMission,
+      updateMission,
       deleteMission,
       getMissionsByConsultant,
       fetchMissions,

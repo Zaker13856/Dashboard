@@ -18,7 +18,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2 } from 'lucide-react';
+import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2, Paperclip, Send, CheckCircle2 } from 'lucide-react';
+import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -55,6 +56,15 @@ const parseSubType = (description) => {
   if (match) return { subType: match[1], text: match[2] };
   return { subType: 'Other', text: description };
 };
+
+// ── Allegati download ───────────────────────────────────────────────────────
+const openAttachment = async (path) => {
+  const { data, error } = await supabase.storage.from('scontrini').createSignedUrl(path, 3600);
+  if (error || !data?.signedUrl) return;
+  window.open(data.signedUrl, '_blank');
+};
+
+const fileLabel = (path) => path.split('/').pop();
 
 // ── Export ISINNOVA template ────────────────────────────────────────────────
 const exportISINNOVA = (mission, expenses, consultantName) => {
@@ -229,10 +239,56 @@ const EditVoceDialog = ({ expense, open, onClose, onSave }) => {
 // ── Component ───────────────────────────────────────────────────────────────
 const MissionList = ({ projectId = null }) => {
   const { user } = useAuth();
-  const { getMissionsByConsultant, deleteMission } = useMissions();
+  const { getMissionsByConsultant, deleteMission, updateMission } = useMissions();
   const { getExpensesByConsultant, deleteExpense, updateExpense } = useExpenses();
   const [missionToDelete, setMissionToDelete] = useState(null);
   const [voceToEdit, setVoceToEdit] = useState(null);
+  const [uploadingMission, setUploadingMission] = useState(null);
+  const [sendingMission, setSendingMission] = useState(null);
+
+  const handleSendToSecretary = async (mission) => {
+    setSendingMission(mission.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-expense`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ mission_id: mission.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Errore invio (${res.status}): ${body?.error || JSON.stringify(body)}`);
+      } else {
+        await updateMission(mission.id, { submitted: true, submitted_at: new Date().toISOString() });
+      }
+    } catch (e) {
+      alert(`Errore: ${e.message}`);
+    }
+    setSendingMission(null);
+  };
+
+  const handleAddAttachments = async (mission, fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    setUploadingMission(mission.id);
+    const newPaths = [];
+    for (const file of Array.from(fileList)) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${user.id}/${mission.id}/${safeName}`;
+      const { error } = await supabase.storage.from('scontrini').upload(path, file, { upsert: true });
+      if (!error) newPaths.push(path);
+    }
+    if (newPaths.length > 0) {
+      const existing = mission.receipt_paths || [];
+      const merged = [...new Set([...existing, ...newPaths])];
+      await updateMission(mission.id, { receipt_paths: merged });
+    }
+    setUploadingMission(null);
+  };
 
   const myMissions = useMemo(() => {
     if (!user) return [];
@@ -326,6 +382,25 @@ const MissionList = ({ projectId = null }) => {
                       <FileSpreadsheet className="w-3.5 h-3.5" />
                       XLS
                     </span>
+                    {mission.submitted ? (
+                      <span className="inline-flex items-center gap-1 text-green-700 border border-green-200 bg-green-50 rounded px-2 py-1 text-[11px] font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Inviata
+                      </span>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 text-[11px] text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 px-2"
+                        disabled={sendingMission === mission.id}
+                        onClick={ev => { ev.stopPropagation(); handleSendToSecretary(mission); }}
+                        title="Invia nota spese a segreteria"
+                      >
+                        {sendingMission === mission.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Send className="w-3.5 h-3.5" />}
+                        Invia
+                      </Button>
+                    )}
                     <AlertDialog open={missionToDelete === mission.id} onOpenChange={open => !open && setMissionToDelete(null)}>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -438,6 +513,37 @@ const MissionList = ({ projectId = null }) => {
                     </table>
                   </div>
                 )}
+                <div className="mt-3 px-2">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5 flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" /> Allegati
+                  </p>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {(mission.receipt_paths || []).map((path, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => openAttachment(path)}
+                        className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 hover:bg-blue-100 transition-colors"
+                      >
+                        <FileText className="w-3 h-3" />
+                        {fileLabel(path)}
+                      </button>
+                    ))}
+                    <label className="flex items-center gap-1 text-xs text-gray-500 border border-dashed border-gray-300 rounded px-2 py-1 hover:border-purple-400 hover:text-purple-600 cursor-pointer transition-colors">
+                      <input
+                        type="file"
+                        multiple
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        className="hidden"
+                        onChange={e => handleAddAttachments(mission, e.target.files)}
+                      />
+                      {uploadingMission === mission.id
+                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Caricamento...</>
+                        : <><Paperclip className="w-3 h-3" /> Aggiungi</>
+                      }
+                    </label>
+                  </div>
+                </div>
               </AccordionContent>
             </AccordionItem>
           );
