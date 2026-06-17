@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-  const TO_EMAIL = 'zaini@libero.it'; // test — cambierà con dzaini@isinnova.org dopo verifica dominio
+  const TO_EMAIL = 'dzaini@isinnova.org'; // test — cambierà con email segreteria (Cali) quando in produzione
   const dateRange = mission.date_from === mission.date_to
     ? fmtDate(mission.date_from)
     : `${fmtDate(mission.date_from)}–${fmtDate(mission.date_to)}`;
