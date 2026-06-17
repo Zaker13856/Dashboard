@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2, Paperclip, Send, CheckCircle2 } from 'lucide-react';
+import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2, Paperclip, Send, CheckCircle2, X, Upload } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
@@ -247,6 +247,25 @@ const MissionList = ({ projectId = null }) => {
   const [voceToEdit, setVoceToEdit] = useState(null);
   const [uploadingMission, setUploadingMission] = useState(null);
   const [sendingMission, setSendingMission] = useState(null);
+  // stagedFiles: { [missionId]: File[] } — file in attesa di upload
+  const [stagedFiles, setStagedFiles] = useState({});
+
+  const addStagedFiles = (missionId, fileList) => {
+    if (!fileList?.length) return;
+    setStagedFiles(prev => {
+      const existing = prev[missionId] || [];
+      const existingNames = new Set(existing.map(f => f.name));
+      const newFiles = Array.from(fileList).filter(f => !existingNames.has(f.name));
+      return { ...prev, [missionId]: [...existing, ...newFiles] };
+    });
+  };
+
+  const removeStagedFile = (missionId, fileName) => {
+    setStagedFiles(prev => ({
+      ...prev,
+      [missionId]: (prev[missionId] || []).filter(f => f.name !== fileName),
+    }));
+  };
 
   const handleSendToSecretary = async (mission) => {
     setSendingMission(mission.id);
@@ -274,11 +293,11 @@ const MissionList = ({ projectId = null }) => {
     setSendingMission(null);
   };
 
-  const handleAddAttachments = async (mission, fileList) => {
-    if (!fileList || fileList.length === 0) return;
+  const handleUploadStaged = async (mission) => {
+    const files = stagedFiles[mission.id];
+    if (!files?.length) return;
     setUploadingMission(mission.id);
 
-    // Usa auth.uid() (Supabase Auth) come prefisso path, non user.id (consultants table)
     const { data: { session } } = await supabase.auth.getSession();
     const authUid = session?.user?.id;
     if (!authUid) {
@@ -288,7 +307,7 @@ const MissionList = ({ projectId = null }) => {
     }
 
     const newPaths = [];
-    for (const file of Array.from(fileList)) {
+    for (const file of files) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const path = `${authUid}/${mission.id}/${safeName}`;
       const { error } = await supabase.storage.from('scontrini').upload(path, file, { upsert: true });
@@ -302,7 +321,8 @@ const MissionList = ({ projectId = null }) => {
       const existing = mission.receipt_paths || [];
       const merged = [...new Set([...existing, ...newPaths])];
       await updateMission(mission.id, { receipt_paths: merged });
-      toast({ title: `${newPaths.length} allegato/i caricato/i`, description: 'Ora puoi premere Invia.' });
+      setStagedFiles(prev => { const n = { ...prev }; delete n[mission.id]; return n; });
+      toast({ title: `${newPaths.length} allegato/i caricati`, description: 'Ora puoi premere Invia.' });
     }
     setUploadingMission(null);
   };
@@ -545,35 +565,76 @@ const MissionList = ({ projectId = null }) => {
                     </table>
                   </div>
                 )}
-                <div className="mt-3 px-2">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5 flex items-center gap-1">
+                <div className="mt-3 px-2 space-y-2">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
                     <Paperclip className="w-3 h-3" /> Allegati
                   </p>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    {(mission.receipt_paths || []).map((path, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => openAttachment(path)}
-                        className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 hover:bg-blue-100 transition-colors"
-                      >
-                        <FileText className="w-3 h-3" />
-                        {fileLabel(path)}
-                      </button>
-                    ))}
+
+                  {/* File già caricati */}
+                  {(mission.receipt_paths || []).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {(mission.receipt_paths || []).map((path, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => openAttachment(path)}
+                          className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 hover:bg-blue-100 transition-colors"
+                        >
+                          <FileText className="w-3 h-3" />
+                          {fileLabel(path)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* File in staging (non ancora caricati) */}
+                  {(stagedFiles[mission.id] || []).length > 0 && (
+                    <div className="border border-dashed border-purple-300 rounded-lg p-2 bg-purple-50/40 space-y-1">
+                      <p className="text-[10px] text-purple-500 font-medium">Pronti per il caricamento:</p>
+                      {(stagedFiles[mission.id] || []).map((file, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-gray-700">
+                          <FileText className="w-3 h-3 text-gray-400 shrink-0" />
+                          <span className="truncate flex-1">{file.name}</span>
+                          <span className="text-gray-400 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
+                          <button
+                            type="button"
+                            onClick={() => removeStagedFile(mission.id, file.name)}
+                            className="text-red-400 hover:text-red-600 shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Azioni */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     <label className="flex items-center gap-1 text-xs text-gray-500 border border-dashed border-gray-300 rounded px-2 py-1 hover:border-purple-400 hover:text-purple-600 cursor-pointer transition-colors">
                       <input
                         type="file"
                         multiple
                         accept=".pdf,.jpg,.jpeg,.png,.webp"
                         className="hidden"
-                        onChange={e => handleAddAttachments(mission, e.target.files)}
+                        onChange={e => addStagedFiles(mission.id, e.target.files)}
                       />
-                      {uploadingMission === mission.id
-                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Caricamento...</>
-                        : <><Paperclip className="w-3 h-3" /> Aggiungi</>
-                      }
+                      <Paperclip className="w-3 h-3" />
+                      {(stagedFiles[mission.id] || []).length > 0 ? 'Aggiungi altri' : 'Seleziona file'}
                     </label>
+                    {(stagedFiles[mission.id] || []).length > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 gap-1 text-[11px] bg-purple-600 hover:bg-purple-700 text-white px-3"
+                        disabled={uploadingMission === mission.id}
+                        onClick={() => handleUploadStaged(mission)}
+                      >
+                        {uploadingMission === mission.id
+                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Caricamento...</>
+                          : <><Upload className="w-3 h-3" /> Carica {stagedFiles[mission.id]?.length} file</>
+                        }
+                      </Button>
+                    )}
                   </div>
                 </div>
               </AccordionContent>
