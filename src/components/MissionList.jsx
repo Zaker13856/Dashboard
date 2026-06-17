@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2, Paperclip, Send, CheckCircle2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -241,6 +242,7 @@ const MissionList = ({ projectId = null }) => {
   const { user } = useAuth();
   const { getMissionsByConsultant, deleteMission, updateMission } = useMissions();
   const { getExpensesByConsultant, deleteExpense, updateExpense } = useExpenses();
+  const { toast } = useToast();
   const [missionToDelete, setMissionToDelete] = useState(null);
   const [voceToEdit, setVoceToEdit] = useState(null);
   const [uploadingMission, setUploadingMission] = useState(null);
@@ -275,17 +277,32 @@ const MissionList = ({ projectId = null }) => {
   const handleAddAttachments = async (mission, fileList) => {
     if (!fileList || fileList.length === 0) return;
     setUploadingMission(mission.id);
+
+    // Usa auth.uid() (Supabase Auth) come prefisso path, non user.id (consultants table)
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUid = session?.user?.id;
+    if (!authUid) {
+      toast({ title: 'Sessione scaduta', description: 'Rieffettua il login.', variant: 'destructive' });
+      setUploadingMission(null);
+      return;
+    }
+
     const newPaths = [];
     for (const file of Array.from(fileList)) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path = `${user.id}/${mission.id}/${safeName}`;
+      const path = `${authUid}/${mission.id}/${safeName}`;
       const { error } = await supabase.storage.from('scontrini').upload(path, file, { upsert: true });
-      if (!error) newPaths.push(path);
+      if (error) {
+        toast({ title: `Upload fallito: ${file.name}`, description: error.message, variant: 'destructive' });
+      } else {
+        newPaths.push(path);
+      }
     }
     if (newPaths.length > 0) {
       const existing = mission.receipt_paths || [];
       const merged = [...new Set([...existing, ...newPaths])];
       await updateMission(mission.id, { receipt_paths: merged });
+      toast({ title: `${newPaths.length} allegato/i caricato/i`, description: 'Ora puoi premere Invia.' });
     }
     setUploadingMission(null);
   };

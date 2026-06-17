@@ -173,10 +173,12 @@ const MissionForm = () => {
       if (!hasError) {
         // Upload allegati se presenti
         if (files.length > 0) {
+          const { data: { session } } = await supabase.auth.getSession();
+          const authUid = session?.user?.id;
           const paths = [];
           for (const file of files) {
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const path = `${user.id}/${mission.id}/${safeName}`;
+            const path = `${authUid || user.id}/${mission.id}/${safeName}`;
             const { error: uploadErr } = await supabase.storage
               .from('scontrini')
               .upload(path, file, { upsert: true });
