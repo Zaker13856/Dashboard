@@ -383,8 +383,23 @@ const MissionList = ({ projectId = null }) => {
                       XLS
                     </span>
                     {mission.submitted ? (
-                      <span className="inline-flex items-center gap-1 text-green-700 border border-green-200 bg-green-50 rounded px-2 py-1 text-[11px] font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Inviata
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 text-green-700 border border-green-200 bg-green-50 rounded px-2 py-1 text-[11px] font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Inviata
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 text-[11px] text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 border border-gray-200 px-2"
+                          disabled={sendingMission === mission.id}
+                          onClick={ev => { ev.stopPropagation(); handleSendToSecretary(mission); }}
+                          title="Rinvia nota spese a segreteria"
+                        >
+                          {sendingMission === mission.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Send className="w-3.5 h-3.5" />}
+                          Rinvia
+                        </Button>
                       </span>
                     ) : (
                       <Button

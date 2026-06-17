@@ -247,4 +247,13 @@ export function exportAdminTimesheets({ year, consultants, entries, projects }) 
     let sheetName = safeSheetName(c.name);
     let suffix = 2;
     while (usedNames.has(sheetName)) {
-      sheetName = `${
+      sheetName = `${safeSheetName(c.name).slice(0, 28)}_${suffix++}`;
+    }
+    usedNames.add(sheetName);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  const filename = `Timesheet_ISINNOVA_${year}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  return { ok: true, filename };
+}

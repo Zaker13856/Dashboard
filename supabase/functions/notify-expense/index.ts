@@ -59,24 +59,23 @@ Deno.serve(async (req) => {
   // Fetch missione
   const { data: mission, error: mErr } = await admin
     .from('missions')
-    .select('*, projects(name)')
+    .select('*')
     .eq('id', body.mission_id)
     .single();
 
   if (mErr || !mission) return json({ error: 'Missione non trovata' }, 404);
 
-  // Solo il proprietario può inviare
-  if (mission.consultant_id !== caller.id) return json({ error: 'Permesso negato' }, 403);
+  // Fetch consulente e progetto separatamente (no FK join in questo progetto)
+  const [{ data: consultant }, { data: project }] = await Promise.all([
+    admin.from('consultants').select('id, name').eq('auth_user_id', caller.id).single(),
+    admin.from('projects').select('name').eq('id', mission.project_id).single(),
+  ]);
 
-  // Fetch consulente
-  const { data: consultant } = await admin
-    .from('consultants')
-    .select('name')
-    .eq('auth_user_id', caller.id)
-    .single();
+  // Solo il proprietario può inviare (consultant.id = FK in missions, caller.id = auth UID)
+  if (!consultant || mission.consultant_id !== consultant.id) return json({ error: 'Permesso negato' }, 403);
 
   const consultantName = consultant?.name || caller.email || 'Consulente';
-  const projectName = (mission.projects as { name: string })?.name || '—';
+  const projectName = project?.name || '—';
 
   // Fetch spese missione
   const { data: expenses } = await admin
@@ -167,7 +166,7 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-  const TO_EMAIL = 'dzaini@isinnova.org'; // test — cambierà con email segreteria (Cali) quando in produzione
+  const TO_EMAIL = 'zaini@libero.it'; // test — cambierà con email segreteria (Cali) dopo verifica dominio Resend
   const dateRange = mission.date_from === mission.date_to
     ? fmtDate(mission.date_from)
     : `${fmtDate(mission.date_from)}–${fmtDate(mission.date_to)}`;

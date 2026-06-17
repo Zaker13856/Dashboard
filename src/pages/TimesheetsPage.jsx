@@ -430,4 +430,12 @@ const TimesheetsPage = () => {
                 </div>
               </CardContent>
             </Card>
-          <
+          </TabsContent>
+
+        </Tabs>
+      </div>
+    </AdminLayout>
+  );
+};
+
+export default TimesheetsPage;
