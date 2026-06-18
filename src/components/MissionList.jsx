@@ -68,83 +68,162 @@ const openAttachment = async (path) => {
 const fileLabel = (path) => path.split('/').pop();
 
 // ── Export ISINNOVA template ────────────────────────────────────────────────
+const DARK_BLUE = '1F3864';
+const MID_BLUE  = '2E5FA3';
+const LIGHT_BG  = 'DCE6F1';
+const ALT_ROW   = 'F2F7FC';
+
+const cs = (fill, fontColor = 'FFFFFF', bold = false, sz = 10, halign = 'center') => ({
+  fill: fill ? { patternType: 'solid', fgColor: { rgb: fill } } : undefined,
+  font: { bold, color: { rgb: fontColor }, sz },
+  alignment: { horizontal: halign, vertical: 'center', wrapText: true },
+  border: {
+    top:    { style: 'thin', color: { rgb: 'BFBFBF' } },
+    bottom: { style: 'thin', color: { rgb: 'BFBFBF' } },
+    left:   { style: 'thin', color: { rgb: 'BFBFBF' } },
+    right:  { style: 'thin', color: { rgb: 'BFBFBF' } },
+  },
+});
+
+const setCell = (ws, ref, value, style) => {
+  if (!ws[ref]) ws[ref] = {};
+  ws[ref].v = value;
+  ws[ref].t = typeof value === 'number' ? 'n' : 's';
+  if (style) ws[ref].s = style;
+};
+
 const exportISINNOVA = (mission, expenses, consultantName) => {
   const wb = XLSX.utils.book_new();
+  const ws = {};
 
-  // Build rows for the expense table
-  const rows = expenses.map(e => {
-    const { subType, text } = parseSubType(e.description);
-    const amt = parseFloat(e.amount) || 0;
-    const iva = parseFloat(e.iva) || 0;
-    return {
-      'Payment Method': PAYMENT_LABELS[e.payment_method] || e.payment_method || '',
-      'Date of Transaction': fmtDate(e.payment_date || e.date),
-      'Notes/Description': text || e.description || '',
-      'Currency': 'EURO',
-      'Transportation': subType === 'Transportation' ? amt : '',
-      'Lodging':        subType === 'Lodging'        ? amt : '',
-      'Meals':          subType === 'Meals'           ? amt : '',
-      'Other':          subType === 'Other'           ? amt : '',
-      'VAT':            iva || '',
-      'Rec':            '',
-      'TOTAL EURO':     amt,
-      'VAT ': iva || 0,
-    };
-  });
+  const totalAmt  = expenses.reduce((s, e) => s + (parseFloat(e.amount)          || 0), 0);
+  const totalIva  = expenses.reduce((s, e) => s + (parseFloat(e.iva)              || 0), 0);
+  const totalElig = expenses.reduce((s, e) => s + (parseFloat(e.eligible_amount)  || 0), 0);
 
-  // Totals row
-  const totalAmt = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-  const totalIva = expenses.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
-  const totalElig = expenses.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
-  // Rimborso al consulente: speso di tasca propria (carta personale + cash), lordo IVA
-  const totalReimb = expenses.reduce((s, e) =>
-    ['carta_personale', 'cash'].includes(e.payment_method) ? s + (parseFloat(e.amount) || 0) : s, 0);
-
-  // Header info as top rows (before the table)
-  const headerData = [
-    ['ISINNOVA', '', '', '', '', '', '', '', '', '', '', 'Period'],
-    ['', '', '', '', '', '', '', '', '', '', '', 'From:', fmtDate(mission.date_from)],
-    ['Name:', consultantName || '', '', '', '', '', '', '', '', '', '', 'To:', fmtDate(mission.date_to)],
-    ['Travelling with:', mission.travelling_with || '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Project:', mission.project_name || '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Destination:', mission.place || '', '', '', '', '', '', '', '', '', '', '', ''],
-    [],
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(headerData);
-
-  // Append expense table rows starting at row 9 (after 7 header rows + 1 blank)
-  XLSX.utils.sheet_add_json(ws, rows, { origin: 'A8', skipHeader: false });
-
-  // Add summary below
-  const summaryStart = 8 + rows.length + 2;
-  const summary = [
-    ['', '', '', '', '', '', '', '', '', '', 'Total Expense', fmt(totalAmt)],
-    ['', '', '', '', '', '', '', '', '', '', 'Of which Total VAT', fmt(totalIva)],
-    ['', '', '', '', '', '', '', '', '', '', 'Total Eligible Costs', fmt(totalElig)],
-    ['', '', '', '', '', '', '', '', '', '', 'Reimbursement', fmt(totalReimb)],
-  ];
-  XLSX.utils.sheet_add_aoa(ws, summary, { origin: { r: summaryStart, c: 0 } });
-
-  const safeName = (mission.place || 'Missione').replace(/[\\/\?\*\[\]:]/g, '').substring(0, 28);
-  XLSX.utils.book_append_sheet(wb, ws, safeName || 'Missione');
-
+  const safeName  = (mission.place || 'Missione').replace(/[\\/\?\*\[\]:]/g, '').substring(0, 28);
   const dateStamp = fmtDate(mission.date_from).replace(/\//g, '');
+
+  // ── Riga 1: titolo ────────────────────────────────────────────────────────
+  const titleStyle = { fill: undefined, font: { bold: true, color: { rgb: DARK_BLUE }, sz: 16 }, alignment: { horizontal: 'center', vertical: 'center' } };
+  setCell(ws, 'A1', 'Travel Expense Report', titleStyle);
+
+  // ── Righe 2-6: intestazione ───────────────────────────────────────────────
+  const labelStyle = { font: { bold: true, color: { rgb: '333333' }, sz: 10 }, alignment: { horizontal: 'right', vertical: 'center' } };
+  const valueStyle = { font: { bold: false, color: { rgb: '000000' }, sz: 10 }, alignment: { horizontal: 'left', vertical: 'center' }, border: { bottom: { style: 'thin', color: { rgb: '333333' } } } };
+  const periodHeaderStyle = cs(DARK_BLUE, 'FFFFFF', true, 10, 'center');
+  const periodLabelStyle  = { font: { bold: true, color: { rgb: '333333' }, sz: 10 }, alignment: { horizontal: 'right', vertical: 'center' }, fill: { patternType: 'solid', fgColor: { rgb: LIGHT_BG } } };
+  const periodValueStyle  = { font: { bold: false, color: { rgb: '000000' }, sz: 10 }, alignment: { horizontal: 'left', vertical: 'center' }, fill: { patternType: 'solid', fgColor: { rgb: LIGHT_BG } } };
+
+  setCell(ws, 'A3', 'Name:',           labelStyle);
+  setCell(ws, 'B3', consultantName || '', valueStyle);
+  setCell(ws, 'A4', 'Travelling with:', labelStyle);
+  setCell(ws, 'B4', mission.travelling_with || '', valueStyle);
+  setCell(ws, 'A5', 'Project:',        labelStyle);
+  setCell(ws, 'B5', mission.project_name || '', valueStyle);
+  setCell(ws, 'A6', 'Destination:',    labelStyle);
+  setCell(ws, 'B6', mission.place || '', valueStyle);
+
+  setCell(ws, 'J2', 'Period',  periodHeaderStyle);
+  setCell(ws, 'J3', 'From:',   periodLabelStyle);
+  setCell(ws, 'K3', fmtDate(mission.date_from), periodValueStyle);
+  setCell(ws, 'J4', 'To:',     periodLabelStyle);
+  setCell(ws, 'K4', fmtDate(mission.date_to),   periodValueStyle);
+
+  // ── Riga 8: intestazioni tabella ──────────────────────────────────────────
+  const headers = ['Payment Method','Date of Transaction','Notes/Description','Currency','Transportation','Lodging','Meals','Other','VAT','Rec','TOTAL EURO','VAT'];
+  const cols = ['A','B','C','D','E','F','G','H','I','J','K','L'];
+  headers.forEach((h, i) => setCell(ws, `${cols[i]}8`, h, cs(DARK_BLUE, 'FFFFFF', true, 9, 'center')));
+
+  // ── Righe dati ────────────────────────────────────────────────────────────
+  const dataStart = 9;
+  const minRows = Math.max(expenses.length, 13);
+
+  for (let r = 0; r < minRows; r++) {
+    const e = expenses[r];
+    const rowNum = dataStart + r;
+    const rowBg = r % 2 === 0 ? 'FFFFFF' : ALT_ROW;
+    const dataCellStyle = (halign = 'left') => cs(rowBg, '000000', false, 10, halign);
+    const numCellStyle  = cs(rowBg, '000000', false, 10, 'right');
+
+    if (e) {
+      const { subType, text } = parseSubType(e.description);
+      const amt = parseFloat(e.amount) || 0;
+      const iva = parseFloat(e.iva) || 0;
+      setCell(ws, `A${rowNum}`, PAYMENT_LABELS[e.payment_method] || e.payment_method || '', dataCellStyle());
+      setCell(ws, `B${rowNum}`, fmtDate(e.payment_date || e.date), dataCellStyle('center'));
+      setCell(ws, `C${rowNum}`, text || e.description || '', dataCellStyle());
+      setCell(ws, `D${rowNum}`, 'EURO', dataCellStyle('center'));
+      if (subType === 'Transportation') { const c = ws[`E${rowNum}`] = { v: amt, t: 'n', z: '€ #,##0.00', s: numCellStyle }; }
+      else setCell(ws, `E${rowNum}`, '', dataCellStyle());
+      if (subType === 'Lodging')        { ws[`F${rowNum}`] = { v: amt, t: 'n', z: '€ #,##0.00', s: numCellStyle }; }
+      else setCell(ws, `F${rowNum}`, '', dataCellStyle());
+      if (subType === 'Meals')          { ws[`G${rowNum}`] = { v: amt, t: 'n', z: '€ #,##0.00', s: numCellStyle }; }
+      else setCell(ws, `G${rowNum}`, '', dataCellStyle());
+      if (subType === 'Other')          { ws[`H${rowNum}`] = { v: amt, t: 'n', z: '€ #,##0.00', s: numCellStyle }; }
+      else setCell(ws, `H${rowNum}`, '', dataCellStyle());
+      ws[`I${rowNum}`] = { v: iva || 0, t: 'n', z: '0.00', s: numCellStyle };
+      setCell(ws, `J${rowNum}`, '', dataCellStyle());
+      ws[`K${rowNum}`] = { v: amt, t: 'n', z: '"€ "#,##0.00', s: numCellStyle };
+      ws[`L${rowNum}`] = { v: iva || 0, t: 'n', z: '0.00', s: numCellStyle };
+    } else {
+      cols.forEach(c => {
+        ws[`${c}${rowNum}`] = { v: c === 'D' ? 'EURO' : '', t: 's', s: dataCellStyle(c === 'D' ? 'center' : 'left') };
+      });
+    }
+  }
+
+  // ── Totali ────────────────────────────────────────────────────────────────
+  const sumRow = dataStart + minRows + 1;
+  const totLabelStyle = cs(LIGHT_BG, '000000', true, 10, 'right');
+  const totValueStyle = { fill: { patternType: 'solid', fgColor: { rgb: LIGHT_BG } }, font: { bold: true, color: { rgb: '000000' }, sz: 10 }, alignment: { horizontal: 'right' }, border: { top: { style: 'thin', color: { rgb: DARK_BLUE } }, bottom: { style: 'thin', color: { rgb: DARK_BLUE } }, left: { style: 'thin', color: { rgb: DARK_BLUE } }, right: { style: 'thin', color: { rgb: DARK_BLUE } } } };
+  const totEligStyle  = { fill: { patternType: 'solid', fgColor: { rgb: DARK_BLUE } }, font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, alignment: { horizontal: 'right' }, border: { top: { style: 'medium', color: { rgb: DARK_BLUE } }, bottom: { style: 'medium', color: { rgb: DARK_BLUE } }, left: { style: 'medium', color: { rgb: DARK_BLUE } }, right: { style: 'medium', color: { rgb: DARK_BLUE } } } };
+
+  setCell(ws, `J${sumRow}`,   'Total Expense',       totLabelStyle);
+  ws[`K${sumRow}`] = { v: totalAmt,  t: 'n', z: '"€ "#,##0.00', s: totValueStyle };
+  setCell(ws, `J${sumRow+1}`, 'Of which Total VAT',  totLabelStyle);
+  ws[`K${sumRow+1}`] = { v: totalIva,  t: 'n', z: '"€ "#,##0.00', s: totValueStyle };
+  setCell(ws, `J${sumRow+2}`, 'Total Eligible Costs', totLabelStyle);
+  ws[`K${sumRow+2}`] = { v: totalElig, t: 'n', z: '"€ "#,##0.00', s: totEligStyle };
+
+  // ── Merge cells ───────────────────────────────────────────────────────────
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },   // titolo A1:L1
+    { s: { r: 1, c: 9 }, e: { r: 1, c: 11 } },   // Period J2:L2
+    { s: { r: 2, c: 1 }, e: { r: 2, c: 8 } },    // nome valore
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 8 } },
+    { s: { r: 4, c: 1 }, e: { r: 4, c: 8 } },
+    { s: { r: 5, c: 1 }, e: { r: 5, c: 8 } },
+  ];
+
+  // ── Larghezze colonne ─────────────────────────────────────────────────────
+  ws['!cols'] = [
+    { wch: 16 }, { wch: 13 }, { wch: 28 }, { wch: 8 },
+    { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+    { wch: 8  }, { wch: 18 }, { wch: 13 }, { wch: 8 },
+  ];
+
+  // ── Altezze righe ─────────────────────────────────────────────────────────
+  ws['!rows'] = [{ hpt: 28 }]; // titolo più alto
+
+  // ── Ref range ────────────────────────────────────────────────────────────
+  ws['!ref'] = `A1:L${sumRow + 2}`;
+
+  XLSX.utils.book_append_sheet(wb, ws, safeName || 'Missione');
   XLSX.writeFile(wb, `NotaSpese_${safeName}_${dateStamp}.xlsx`);
 };
 
 // ── Edit voce dialog ────────────────────────────────────────────────────────
 const SUBTYPE_OPTIONS = ['Transportation', 'Lodging', 'Meals', 'Other'];
 const PAYMENT_OPTIONS = [
-  { value: 'carta_personale', label: 'Carta Personale' },
   { value: 'carta_aziendale', label: 'Carta Aziendale' },
+  { value: 'carta_personale', label: 'Carta Personale' },
   { value: 'cash', label: 'Cash' },
 ];
 
 const EditVoceDialog = ({ expense, open, onClose, onSave }) => {
   const parsed = parseSubType(expense?.description);
   const [form, setForm] = useState({
-    payment_method: expense?.payment_method || 'carta_personale',
+    payment_method: expense?.payment_method || 'carta_aziendale',
     payment_date: expense?.payment_date || expense?.date || '',
     sub_type: parsed.subType,
     description: parsed.text,

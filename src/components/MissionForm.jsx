@@ -14,8 +14,8 @@ import { Loader2, Plus, Trash2, MapPin, Calendar, Users, FileText, Paperclip, Up
 import { cn } from '@/lib/utils';
 
 const PAYMENT_METHODS = [
-  { value: 'carta_personale', label: 'Carta Personale' },
   { value: 'carta_aziendale', label: 'Carta Aziendale' },
+  { value: 'carta_personale', label: 'Carta Personale' },
   { value: 'cash', label: 'Cash' },
 ];
 
@@ -28,7 +28,7 @@ const EXPENSE_SUBTYPES = [
 
 const emptyRow = (date = '') => ({
   _id: Math.random().toString(36).slice(2),
-  payment_method: 'carta_personale',
+  payment_method: 'carta_aziendale',
   transaction_date: date,
   sub_type: 'Transportation',
   description: '',
@@ -471,11 +471,16 @@ const MissionForm = () => {
               accept=".pdf,.jpg,.jpeg,.png,.webp"
               className="hidden"
               ref={fileInputRef}
-              onChange={e => setFiles(Array.from(e.target.files))}
+              onChange={e => {
+                const existingNames = new Set(files.map(f => f.name));
+                const added = Array.from(e.target.files).filter(f => !existingNames.has(f.name));
+                setFiles(prev => [...prev, ...added]);
+                e.target.value = '';
+              }}
             />
             <Upload className="w-5 h-5 text-gray-400 shrink-0" />
             <span className="text-sm text-gray-500">
-              {files.length === 0 ? 'Clicca per selezionare file' : `${files.length} file selezionati`}
+              {files.length === 0 ? 'Clicca per selezionare file' : `${files.length} file selezionati — clicca per aggiungerne altri`}
             </span>
           </label>
           {files.length > 0 && (
