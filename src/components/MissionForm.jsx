@@ -32,7 +32,10 @@ const emptyRow = (date = '') => ({
   transaction_date: date,
   sub_type: 'Transportation',
   description: '',
-  amount: '',
+  currency: 'EUR',
+  exchange_rate: 1,
+  original_amount: '',
+  amount_eur: 0,
   iva: '',
   eligible: 0,
 });
@@ -66,7 +69,6 @@ const MissionForm = () => {
 
   const handleHeader = (field, value) => {
     setHeader(prev => ({ ...prev, [field]: value }));
-    // Sync transaction dates to date_from when set
     if (field === 'dateFrom') {
       setRows(prev => prev.map(r => r.transaction_date === '' ? { ...r, transaction_date: value } : r));
     }
@@ -76,11 +78,18 @@ const MissionForm = () => {
     setRows(prev => prev.map((r, i) => {
       if (i !== idx) return r;
       const next = { ...r, [field]: value };
-      if (field === 'amount' || field === 'iva') {
-        const amt = parseFloat(field === 'amount' ? value : next.amount) || 0;
-        const iva = parseFloat(field === 'iva' ? value : next.iva) || 0;
-        next.eligible = parseFloat(Math.max(0, amt - iva).toFixed(2));
+
+      if (field === 'currency' && value.toUpperCase() === 'EUR') {
+        next.exchange_rate = 1;
       }
+
+      const origAmt = parseFloat(next.original_amount) || 0;
+      const rate = parseFloat(next.exchange_rate) || 1;
+      next.amount_eur = parseFloat((origAmt * rate).toFixed(2));
+
+      const iva = parseFloat(next.iva) || 0;
+      next.eligible = parseFloat(Math.max(0, next.amount_eur - iva).toFixed(2));
+
       return next;
     }));
   };
@@ -94,10 +103,14 @@ const MissionForm = () => {
   };
 
   const totals = rows.reduce((acc, r) => ({
-    amount: acc.amount + (parseFloat(r.amount) || 0),
+    amount_eur: acc.amount_eur + (r.amount_eur || 0),
     iva: acc.iva + (parseFloat(r.iva) || 0),
     eligible: acc.eligible + (r.eligible || 0),
-  }), { amount: 0, iva: 0, eligible: 0 });
+  }), { amount_eur: 0, iva: 0, eligible: 0 });
+
+  const rimborso = rows
+    .filter(r => r.payment_method === 'carta_personale' || r.payment_method === 'cash')
+    .reduce((acc, r) => acc + (r.amount_eur || 0), 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -112,7 +125,7 @@ const MissionForm = () => {
       return;
     }
 
-    const validRows = rows.filter(r => r.amount && parseFloat(r.amount) > 0);
+    const validRows = rows.filter(r => r.original_amount && parseFloat(r.original_amount) > 0);
     if (validRows.length === 0) {
       toast({ title: 'Errore', description: 'Aggiungi almeno una voce di spesa.', variant: 'destructive' });
       return;
@@ -127,7 +140,6 @@ const MissionForm = () => {
 
     setIsLoading(true);
     try {
-      // 1. Create mission
       const { data: mission, error: mErr } = await createMission({
         consultantId: user.id,
         projectId: header.projectId,
@@ -142,7 +154,6 @@ const MissionForm = () => {
         return;
       }
 
-      // 2. Insert expense rows
       let hasError = false;
       for (const r of validRows) {
         const desc = r.description
@@ -152,16 +163,19 @@ const MissionForm = () => {
         const result = await addExpense({
           consultantId: user.id,
           projectId: header.projectId,
-          date: header.dateFrom,          // data missione = date_from
-          paymentDate: r.transaction_date, // data transazione
+          date: header.dateFrom,
+          paymentDate: r.transaction_date,
           type: 'travel',
-          amount: parseFloat(r.amount),
+          amount: r.amount_eur,
           iva: parseFloat(r.iva) || 0,
           eligibleAmount: r.eligible,
           description: desc,
           place: header.place,
           paymentMethod: r.payment_method,
           missionId: mission.id,
+          currency: r.currency,
+          exchangeRate: r.exchange_rate,
+          originalAmount: parseFloat(r.original_amount),
         });
 
         if (result?.error) {
@@ -171,7 +185,6 @@ const MissionForm = () => {
       }
 
       if (!hasError) {
-        // Upload allegati se presenti
         if (files.length > 0) {
           const { data: { session } } = await supabase.auth.getSession();
           const authUid = session?.user?.id;
@@ -220,7 +233,6 @@ const MissionForm = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Progetto */}
             <div className="space-y-1.5">
               <Label>Progetto *</Label>
               <Select value={header.projectId} onValueChange={v => handleHeader('projectId', v)}>
@@ -239,7 +251,6 @@ const MissionForm = () => {
               </Select>
             </div>
 
-            {/* Destinazione */}
             <div className="space-y-1.5">
               <Label>Destinazione *</Label>
               <div className="relative">
@@ -254,7 +265,6 @@ const MissionForm = () => {
               </div>
             </div>
 
-            {/* Travelling with */}
             <div className="space-y-1.5">
               <Label>Travelling with</Label>
               <div className="relative">
@@ -268,7 +278,6 @@ const MissionForm = () => {
               </div>
             </div>
 
-            {/* Data from */}
             <div className="space-y-1.5">
               <Label>Data inizio missione *</Label>
               <div className="relative">
@@ -283,7 +292,6 @@ const MissionForm = () => {
               </div>
             </div>
 
-            {/* Data to */}
             <div className="space-y-1.5">
               <Label>Data fine missione *</Label>
               <div className="relative">
@@ -316,10 +324,12 @@ const MissionForm = () => {
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 border-y border-gray-200 text-gray-500 uppercase tracking-wide text-[10px]">
-                  <th className="px-3 py-2.5 text-left font-medium w-36">Metodo Pagamento</th>
-                  <th className="px-3 py-2.5 text-left font-medium w-32">Data Transazione</th>
-                  <th className="px-3 py-2.5 text-left font-medium w-32">Tipo</th>
+                  <th className="px-3 py-2.5 text-left font-medium w-32">Metodo Pagamento</th>
+                  <th className="px-3 py-2.5 text-left font-medium w-28">Data Transazione</th>
+                  <th className="px-3 py-2.5 text-left font-medium w-28">Tipo</th>
                   <th className="px-3 py-2.5 text-left font-medium">Descrizione / Note</th>
+                  <th className="px-3 py-2.5 text-left font-medium w-20">Valuta / Tasso</th>
+                  <th className="px-3 py-2.5 text-right font-medium w-24">Importo</th>
                   <th className="px-3 py-2.5 text-right font-medium w-24">Importo €</th>
                   <th className="px-3 py-2.5 text-right font-medium w-20">IVA €</th>
                   <th className="px-3 py-2.5 text-right font-medium w-24 text-purple-700">Eligible €</th>
@@ -327,118 +337,170 @@ const MissionForm = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((row, idx) => (
-                  <tr key={row._id} className="hover:bg-gray-50/50">
-                    {/* Payment method */}
-                    <td className="px-2 py-1.5">
-                      <Select value={row.payment_method} onValueChange={v => handleRow(idx, 'payment_method', v)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PAYMENT_METHODS.map(m => (
-                            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    {/* Transaction date */}
-                    <td className="px-2 py-1.5">
-                      <Input
-                        type="date"
-                        value={row.transaction_date}
-                        onChange={e => handleRow(idx, 'transaction_date', e.target.value)}
-                        className="h-8 text-xs"
-                        required
-                      />
-                    </td>
-                    {/* Sub type */}
-                    <td className="px-2 py-1.5">
-                      <Select value={row.sub_type} onValueChange={v => handleRow(idx, 'sub_type', v)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {EXPENSE_SUBTYPES.map(t => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    {/* Description */}
-                    <td className="px-2 py-1.5">
-                      <Input
-                        placeholder="es. Taxi aeroporto, Hotel 1 notte..."
-                        value={row.description}
-                        onChange={e => handleRow(idx, 'description', e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                    </td>
-                    {/* Amount */}
-                    <td className="px-2 py-1.5">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={row.amount}
-                        onChange={e => handleRow(idx, 'amount', e.target.value)}
-                        className="h-8 text-xs text-right"
-                        required
-                      />
-                    </td>
-                    {/* IVA */}
-                    <td className="px-2 py-1.5">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={row.iva}
-                        onChange={e => handleRow(idx, 'iva', e.target.value)}
-                        className="h-8 text-xs text-right"
-                      />
-                    </td>
-                    {/* Eligible (readonly) */}
-                    <td className="px-2 py-1.5">
-                      <Input
-                        type="number"
-                        value={row.eligible}
-                        readOnly
-                        className="h-8 text-xs text-right bg-purple-50 text-purple-900 border-purple-200 font-medium"
-                      />
-                    </td>
-                    {/* Delete row */}
-                    <td className="px-2 py-1.5">
-                      {rows.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => removeRow(idx)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((row, idx) => {
+                  const isEur = row.currency.toUpperCase() === 'EUR';
+                  return (
+                    <tr key={row._id} className="hover:bg-gray-50/50">
+                      {/* Payment method */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Select value={row.payment_method} onValueChange={v => handleRow(idx, 'payment_method', v)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_METHODS.map(m => (
+                              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      {/* Transaction date */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Input
+                          type="date"
+                          value={row.transaction_date}
+                          onChange={e => handleRow(idx, 'transaction_date', e.target.value)}
+                          className="h-8 text-xs"
+                          required
+                        />
+                      </td>
+                      {/* Sub type */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Select value={row.sub_type} onValueChange={v => handleRow(idx, 'sub_type', v)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EXPENSE_SUBTYPES.map(t => (
+                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      {/* Description */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Input
+                          placeholder="es. Taxi aeroporto, Hotel 1 notte..."
+                          value={row.description}
+                          onChange={e => handleRow(idx, 'description', e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </td>
+                      {/* Valuta + Tasso (stacked) */}
+                      <td className="px-2 py-1.5 align-top">
+                        <div className="flex flex-col gap-1">
+                          <Input
+                            placeholder="EUR"
+                            value={row.currency}
+                            onChange={e => handleRow(idx, 'currency', e.target.value.toUpperCase())}
+                            className="h-7 text-xs w-16 uppercase font-mono"
+                            maxLength={5}
+                          />
+                          <Input
+                            type="number"
+                            step="0.0001"
+                            min="0.0001"
+                            placeholder="tasso"
+                            value={row.exchange_rate}
+                            onChange={e => handleRow(idx, 'exchange_rate', e.target.value)}
+                            disabled={isEur}
+                            className={cn(
+                              "h-7 text-[10px] w-16",
+                              isEur ? "opacity-30 cursor-not-allowed" : "border-amber-300 bg-amber-50"
+                            )}
+                          />
+                        </div>
+                      </td>
+                      {/* Importo originale */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={row.original_amount}
+                          onChange={e => handleRow(idx, 'original_amount', e.target.value)}
+                          className="h-8 text-xs text-right"
+                          required
+                        />
+                      </td>
+                      {/* Importo in EUR (calcolato) */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Input
+                          type="number"
+                          value={row.amount_eur}
+                          readOnly
+                          className={cn(
+                            "h-8 text-xs text-right font-medium",
+                            isEur
+                              ? "bg-gray-50 text-gray-400 border-gray-200"
+                              : "bg-amber-50 text-amber-900 border-amber-300"
+                          )}
+                        />
+                      </td>
+                      {/* IVA */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={row.iva}
+                          onChange={e => handleRow(idx, 'iva', e.target.value)}
+                          className="h-8 text-xs text-right"
+                        />
+                      </td>
+                      {/* Eligible (readonly) */}
+                      <td className="px-2 py-1.5 align-top">
+                        <Input
+                          type="number"
+                          value={row.eligible}
+                          readOnly
+                          className="h-8 text-xs text-right bg-purple-50 text-purple-900 border-purple-200 font-medium"
+                        />
+                      </td>
+                      {/* Delete row */}
+                      <td className="px-2 py-1.5 align-top">
+                        {rows.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => removeRow(idx)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
-              {/* Totals footer */}
               <tfoot>
+                {/* Totale */}
                 <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold text-xs">
-                  <td colSpan={4} className="px-3 py-2 text-gray-700 uppercase tracking-wide text-[10px]">Totale</td>
-                  <td className="px-3 py-2 text-right text-gray-900">€ {fmt(totals.amount)}</td>
+                  <td colSpan={5} className="px-3 py-2 text-gray-700 uppercase tracking-wide text-[10px]">Totale</td>
+                  <td className="px-3 py-2 text-right text-gray-400 text-[10px]">—</td>
+                  <td className="px-3 py-2 text-right text-gray-900">€ {fmt(totals.amount_eur)}</td>
                   <td className="px-3 py-2 text-right text-red-600">€ {fmt(totals.iva)}</td>
                   <td className="px-3 py-2 text-right text-purple-700 font-bold">€ {fmt(totals.eligible)}</td>
                   <td></td>
+                </tr>
+                {/* Rimborso da liquidare */}
+                <tr className="bg-amber-50 border-t border-amber-200 text-xs">
+                  <td colSpan={5} className="px-3 py-2 text-amber-800 uppercase tracking-wide text-[10px] font-semibold">
+                    Rimborso da liquidare
+                    <span className="ml-1 font-normal normal-case text-amber-600">(Carta Personale + Cash)</span>
+                  </td>
+                  <td></td>
+                  <td className="px-3 py-2 text-right text-amber-900 font-bold">€ {fmt(rimborso)}</td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          {/* Add row button */}
           <div className="p-3 border-t border-gray-100">
             <Button
               type="button"

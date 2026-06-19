@@ -105,7 +105,7 @@ export const ExpenseProvider = ({ children }) => {
 
   // ── WRITE FUNCTIONS ─────────────────────────────────────────────────────────
 
-  const addExpense = async ({ projectId, consultantId, date, type, amount, iva, eligibleAmount, description, days, place, paymentMethod, paymentDate, missionId }) => {
+  const addExpense = async ({ projectId, consultantId, date, type, amount, iva, eligibleAmount, description, days, place, paymentMethod, paymentDate, missionId, currency, exchangeRate, originalAmount }) => {
     const payload = {
       project_id: projectId,
       consultant_id: consultantId || null,
@@ -121,6 +121,9 @@ export const ExpenseProvider = ({ children }) => {
     if (paymentMethod) payload.payment_method = paymentMethod;
     if (paymentDate) payload.payment_date = paymentDate;
     if (missionId) payload.mission_id = missionId;
+    if (currency) payload.currency = currency;
+    if (exchangeRate !== undefined) payload.exchange_rate = parseFloat(exchangeRate) || 1;
+    if (originalAmount !== undefined) payload.original_amount = parseFloat(originalAmount) || null;
     const { data, error } = await supabase.from('expenses').insert(payload).select().single();
     if (!error && data) setAllExpenses(prev => [...prev, data]);
     return { data, error };

@@ -99,6 +99,9 @@ const exportISINNOVA = (mission, expenses, consultantName) => {
   const totalAmt  = expenses.reduce((s, e) => s + (parseFloat(e.amount)          || 0), 0);
   const totalIva  = expenses.reduce((s, e) => s + (parseFloat(e.iva)              || 0), 0);
   const totalElig = expenses.reduce((s, e) => s + (parseFloat(e.eligible_amount)  || 0), 0);
+  const rimborso  = expenses
+    .filter(e => e.payment_method === 'carta_personale' || e.payment_method === 'cash')
+    .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
   const safeName  = (mission.place || 'Missione').replace(/[\\/\?\*\[\]:]/g, '').substring(0, 28);
   const dateStamp = fmtDate(mission.date_from).replace(/\//g, '');
@@ -152,7 +155,7 @@ const exportISINNOVA = (mission, expenses, consultantName) => {
       setCell(ws, `A${rowNum}`, PAYMENT_LABELS[e.payment_method] || e.payment_method || '', dataCellStyle());
       setCell(ws, `B${rowNum}`, fmtDate(e.payment_date || e.date), dataCellStyle('center'));
       setCell(ws, `C${rowNum}`, text || e.description || '', dataCellStyle());
-      setCell(ws, `D${rowNum}`, 'EURO', dataCellStyle('center'));
+      setCell(ws, `D${rowNum}`, (e.currency || 'EUR').toUpperCase(), dataCellStyle('center'));
       if (subType === 'Transportation') { const c = ws[`E${rowNum}`] = { v: amt, t: 'n', z: '€ #,##0.00', s: numCellStyle }; }
       else setCell(ws, `E${rowNum}`, '', dataCellStyle());
       if (subType === 'Lodging')        { ws[`F${rowNum}`] = { v: amt, t: 'n', z: '€ #,##0.00', s: numCellStyle }; }
@@ -185,6 +188,12 @@ const exportISINNOVA = (mission, expenses, consultantName) => {
   setCell(ws, `J${sumRow+2}`, 'Total Eligible Costs', totLabelStyle);
   ws[`K${sumRow+2}`] = { v: totalElig, t: 'n', z: '"€ "#,##0.00', s: totEligStyle };
 
+  const rimborsoLabelStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF3CD' } }, font: { bold: true, color: { rgb: '92400E' }, sz: 10 }, alignment: { horizontal: 'right' }, border: { top: { style: 'thin', color: { rgb: 'F59E0B' } }, bottom: { style: 'medium', color: { rgb: 'F59E0B' } }, left: { style: 'thin', color: { rgb: 'F59E0B' } }, right: { style: 'thin', color: { rgb: 'F59E0B' } } } };
+  const rimborsoValueStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF3CD' } }, font: { bold: true, color: { rgb: '92400E' }, sz: 10 }, alignment: { horizontal: 'right' }, border: { top: { style: 'thin', color: { rgb: 'F59E0B' } }, bottom: { style: 'medium', color: { rgb: 'F59E0B' } }, left: { style: 'thin', color: { rgb: 'F59E0B' } }, right: { style: 'medium', color: { rgb: 'F59E0B' } } } };
+  setCell(ws, `J${sumRow+4}`, 'Rimborso da Liquidare', rimborsoLabelStyle);
+  ws[`K${sumRow+4}`] = { v: rimborso, t: 'n', z: '"€ "#,##0.00', s: rimborsoValueStyle };
+  setCell(ws, `I${sumRow+4}`, '(Carta Pers. + Cash)', { font: { italic: true, color: { rgb: 'B45309' }, sz: 9 }, alignment: { horizontal: 'right' } });
+
   // ── Merge cells ───────────────────────────────────────────────────────────
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },   // titolo A1:L1
@@ -206,7 +215,7 @@ const exportISINNOVA = (mission, expenses, consultantName) => {
   ws['!rows'] = [{ hpt: 28 }]; // titolo più alto
 
   // ── Ref range ────────────────────────────────────────────────────────────
-  ws['!ref'] = `A1:L${sumRow + 2}`;
+  ws['!ref'] = `A1:L${sumRow + 4}`;
 
   XLSX.utils.book_append_sheet(wb, ws, safeName || 'Missione');
   XLSX.writeFile(wb, `NotaSpese_${safeName}_${dateStamp}.xlsx`);
@@ -461,6 +470,9 @@ const MissionList = ({ projectId = null }) => {
           const totalAmt = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
           const totalIva = items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
           const totalElig = items.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+          const rimborso = items
+            .filter(e => e.payment_method === 'carta_personale' || e.payment_method === 'cash')
+            .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
           const dateRange = mission.date_from === mission.date_to
             ? fmtDate(mission.date_from)
             : `${fmtDate(mission.date_from)} – ${fmtDate(mission.date_to)}`;
@@ -640,6 +652,16 @@ const MissionList = ({ projectId = null }) => {
                           <td className="px-3 py-2 text-right text-green-700">{fmt(totalElig)}</td>
                           <td></td>
                         </tr>
+                        {rimborso > 0 && (
+                          <tr className="bg-amber-50 border-t border-amber-200 text-xs font-bold">
+                            <td colSpan={4} className="px-3 py-2 text-amber-800 uppercase text-[10px]">
+                              Rimborso da liquidare
+                              <span className="ml-1 font-normal normal-case text-amber-600">(Carta Personale + Cash)</span>
+                            </td>
+                            <td className="px-3 py-2 text-right text-amber-900">{fmt(rimborso)}</td>
+                            <td colSpan={3}></td>
+                          </tr>
+                        )}
                       </tfoot>
                     </table>
                   </div>
