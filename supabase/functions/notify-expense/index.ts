@@ -321,7 +321,7 @@ Deno.serve(async (req) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'ISINNOVA Dashboard <onboarding@resend.dev>',
+      from: 'ISINNOVA Dashboard <noreply@isinnova.cloud>',
       to: [TO_EMAIL],
       subject: `[ISINNOVA] Nota spese — ${consultantName} · ${mission.place} · ${dateRange}`,
       html,
