@@ -135,9 +135,18 @@ export const AuthProvider = ({ children }) => {
   };
   const addConsultant = async ({ name, email, role, status, tipo, socio_dal, qualifica_socio }) => {
     // 1. Insert into consultants table
+    const insertFields = {
+      name,
+      email: email || null,
+      role: role || 'consultant',
+      status: status || 'active',
+      tipo: tipo || 'consulente',
+      qualifica_socio: qualifica_socio || null,
+    };
+    if (socio_dal && socio_dal.trim() !== '') insertFields.socio_dal = socio_dal;
     const { data, error } = await supabase
       .from('consultants')
-      .insert({ name, email: email || null, role: role || 'consultant', status: status || 'active', tipo: tipo || 'consulente', socio_dal: socio_dal || null, qualifica_socio: qualifica_socio || null })
+      .insert(insertFields)
       .select()
       .single();
     if (error) return { error: error.message };
