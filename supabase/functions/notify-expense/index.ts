@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-  const TO_EMAIL = 'zaini@libero.it';
+  const TO_EMAIL = 'gcali@isinnova.org';
   const dateRange = mission.date_from === mission.date_to
     ? fmtDate(mission.date_from)
     : `${fmtDate(mission.date_from)}–${fmtDate(mission.date_to)}`;
