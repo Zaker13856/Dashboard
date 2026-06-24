@@ -66,6 +66,9 @@ const buildXlsx = (mission: Record<string, unknown>, expenses: Record<string, un
   const totalAmt  = expenses.reduce((s, e) => s + (parseFloat(e.amount as string) || 0), 0);
   const totalIva  = expenses.reduce((s, e) => s + (parseFloat(e.iva as string) || 0), 0);
   const totalElig = expenses.reduce((s, e) => s + (parseFloat(e.eligible_amount as string) || 0), 0);
+  const rimborso  = expenses
+    .filter(e => (e.payment_method as string) === 'carta_personale' || (e.payment_method as string) === 'cash')
+    .reduce((s, e) => s + (parseFloat(e.amount as string) || 0), 0);
 
   const safeName = ((mission.place as string) || 'Missione').replace(/[\\/\?\*\[\]:]/g, '').substring(0, 28);
 
@@ -142,6 +145,12 @@ const buildXlsx = (mission: Record<string, unknown>, expenses: Record<string, un
   setCell(ws, `J${sumRow+2}`, 'Total Eligible Costs', totLabelStyle);
   ws[`K${sumRow+2}`] = { v: totalElig, t: 'n', z: '"€ "#,##0.00', s: totEligStyle };
 
+  const rimborsoLabelStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF3CD' } }, font: { bold: true, color: { rgb: '92400E' }, sz: 10 }, alignment: { horizontal: 'right' }, border: { top: { style: 'thin', color: { rgb: 'F59E0B' } }, bottom: { style: 'medium', color: { rgb: 'F59E0B' } }, left: { style: 'thin', color: { rgb: 'F59E0B' } }, right: { style: 'thin', color: { rgb: 'F59E0B' } } } };
+  const rimborsoValueStyle = { fill: { patternType: 'solid', fgColor: { rgb: 'FFF3CD' } }, font: { bold: true, color: { rgb: '92400E' }, sz: 10 }, alignment: { horizontal: 'right' }, border: { top: { style: 'thin', color: { rgb: 'F59E0B' } }, bottom: { style: 'medium', color: { rgb: 'F59E0B' } }, left: { style: 'thin', color: { rgb: 'F59E0B' } }, right: { style: 'medium', color: { rgb: 'F59E0B' } } } };
+  setCell(ws, `I${sumRow+3}`, '(Carta Pers. + Cash)', { font: { italic: true, color: { rgb: 'B45309' }, sz: 9 }, alignment: { horizontal: 'right' } });
+  setCell(ws, `J${sumRow+3}`, 'Rimborso da Liquidare', rimborsoLabelStyle);
+  ws[`K${sumRow+3}`] = { v: rimborso, t: 'n', z: '"€ "#,##0.00', s: rimborsoValueStyle };
+
   // Merge e dimensioni
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },
@@ -157,7 +166,7 @@ const buildXlsx = (mission: Record<string, unknown>, expenses: Record<string, un
     { wch: 8  }, { wch: 18 }, { wch: 13 }, { wch: 8 },
   ];
   ws['!rows'] = [{ hpt: 28 }];
-  ws['!ref']  = `A1:L${sumRow + 2}`;
+  ws['!ref']  = `A1:L${sumRow + 3}`;
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws as XLSX.WorkSheet, safeName || 'Missione');
@@ -226,6 +235,9 @@ Deno.serve(async (req) => {
   const rows = expenses || [];
   const totalAmt  = rows.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
   const totalElig = rows.reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+  const rimborso  = rows
+    .filter(e => e.payment_method === 'carta_personale' || e.payment_method === 'cash')
+    .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
   // Genera URL firmati allegati (7 giorni)
   const attachmentLinks: string[] = [];
@@ -289,6 +301,11 @@ Deno.serve(async (req) => {
           <td style="padding:6px 8px;text-align:right">€ ${fmt(totalAmt)}</td>
           <td style="padding:6px 8px;text-align:right;color:#15803d">€ ${fmt(totalElig)}</td>
         </tr>
+        ${rimborso > 0 ? `<tr style="font-weight:bold;background:#fef3c7;border-top:2px solid #f59e0b">
+          <td colspan="3" style="padding:6px 8px;color:#92400e">Rimborso da Liquidare <span style="font-weight:normal;font-style:italic;font-size:11px">(Carta Pers. + Cash)</span></td>
+          <td style="padding:6px 8px;text-align:right;color:#92400e">€ ${fmt(rimborso)}</td>
+          <td></td>
+        </tr>` : ''}
       </tfoot>
     </table>
 
