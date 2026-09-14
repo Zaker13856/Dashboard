@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2, Paperclip, Send, CheckCircle2, X, Upload } from 'lucide-react';
+import { Trash2, MapPin, FileSpreadsheet, FileText, CreditCard, Wallet, Banknote, Pencil, Loader2, Paperclip, Send, CheckCircle2, X, Upload, Plus } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
@@ -325,14 +325,112 @@ const EditVoceDialog = ({ expense, open, onClose, onSave }) => {
   );
 };
 
+// ── Aggiungi voce dialog (per missioni già create, anche se inviate) ───────────
+const AddVoceDialog = ({ mission, open, onClose, onAdd }) => {
+  const [form, setForm] = useState({
+    payment_method: 'carta_aziendale',
+    payment_date: mission?.date_from || '',
+    sub_type: 'Transportation',
+    description: '',
+    amount: '',
+    iva: '',
+    eligible_amount: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleChange = (field, value) => {
+    setForm(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'amount' || field === 'iva') {
+        const amt = parseFloat(field === 'amount' ? value : next.amount) || 0;
+        const iva = parseFloat(field === 'iva' ? value : next.iva) || 0;
+        next.eligible_amount = parseFloat(Math.max(0, amt - iva).toFixed(2));
+      }
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    if (!form.payment_date || !form.amount || parseFloat(form.amount) <= 0) return;
+    setSaving(true);
+    await onAdd(mission, {
+      payment_method: form.payment_method,
+      payment_date: form.payment_date,
+      amount: parseFloat(form.amount) || 0,
+      iva: parseFloat(form.iva) || 0,
+      eligible_amount: parseFloat(form.eligible_amount) || 0,
+      description: form.description ? `[${form.sub_type}] ${form.description}` : `[${form.sub_type}]`,
+    });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Aggiungi Voce di Spesa</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4 py-2">
+          <div className="space-y-1">
+            <Label>Metodo Pagamento</Label>
+            <Select value={form.payment_method} onValueChange={v => handleChange('payment_method', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PAYMENT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Data Transazione</Label>
+            <Input type="date" value={form.payment_date} onChange={e => handleChange('payment_date', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Tipo</Label>
+            <Select value={form.sub_type} onValueChange={v => handleChange('sub_type', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SUBTYPE_OPTIONS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Importo €</Label>
+            <Input type="number" step="0.01" min="0" value={form.amount} onChange={e => handleChange('amount', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>IVA €</Label>
+            <Input type="number" step="0.01" min="0" value={form.iva} onChange={e => handleChange('iva', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-purple-700 font-semibold">Eligible €</Label>
+            <Input type="number" value={form.eligible_amount} readOnly className="bg-purple-50 text-purple-900 border-purple-200 font-medium" />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <Label>Descrizione</Label>
+            <Textarea value={form.description} onChange={e => handleChange('description', e.target.value)} rows={2} className="resize-none" placeholder="Es. Volo Roma-Barcellona" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
+          <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
+            {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvataggio...</> : 'Aggiungi'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // ── Component ───────────────────────────────────────────────────────────────
 const MissionList = ({ projectId = null }) => {
   const { user } = useAuth();
   const { getMissionsByConsultant, deleteMission, updateMission } = useMissions();
-  const { getExpensesByConsultant, deleteExpense, updateExpense } = useExpenses();
+  const { getExpensesByConsultant, addExpense, deleteExpense, updateExpense } = useExpenses();
   const { toast } = useToast();
   const [missionToDelete, setMissionToDelete] = useState(null);
   const [voceToEdit, setVoceToEdit] = useState(null);
+  const [missionToAddVoce, setMissionToAddVoce] = useState(null);
   const [uploadingMission, setUploadingMission] = useState(null);
   const [sendingMission, setSendingMission] = useState(null);
   // stagedFiles: { [missionId]: File[] } — file in attesa di upload
@@ -442,6 +540,28 @@ const MissionList = ({ projectId = null }) => {
     setMissionToDelete(null);
   };
 
+  const handleAddVoce = async (mission, voce) => {
+    const result = await addExpense({
+      consultantId: user.id,
+      projectId: mission.project_id,
+      date: mission.date_from,
+      paymentDate: voce.payment_date,
+      type: 'travel',
+      amount: voce.amount,
+      iva: voce.iva,
+      eligibleAmount: voce.eligible_amount,
+      description: voce.description,
+      place: mission.place,
+      paymentMethod: voce.payment_method,
+      missionId: mission.id,
+    });
+    if (result?.error) {
+      toast({ title: 'Errore', description: result.error.message || String(result.error), variant: 'destructive' });
+    } else {
+      toast({ title: 'Voce aggiunta', description: 'La spesa è stata aggiunta alla missione.' });
+    }
+  };
+
   if (myMissions.length === 0 && legacyExpenses.length === 0) {
     return (
       <Card className="bg-gray-50 border-dashed border-2">
@@ -462,6 +582,14 @@ const MissionList = ({ projectId = null }) => {
           open={!!voceToEdit}
           onClose={() => setVoceToEdit(null)}
           onSave={updateExpense}
+        />
+      )}
+      {missionToAddVoce && (
+        <AddVoceDialog
+          mission={missionToAddVoce}
+          open={!!missionToAddVoce}
+          onClose={() => setMissionToAddVoce(null)}
+          onAdd={handleAddVoce}
         />
       )}
       <Accordion type="multiple" className="space-y-3">
@@ -510,6 +638,16 @@ const MissionList = ({ projectId = null }) => {
                       <FileSpreadsheet className="w-3.5 h-3.5" />
                       XLS
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-[11px] text-purple-700 hover:text-purple-800 hover:bg-purple-50 border border-purple-200 px-2"
+                      onClick={ev => { ev.stopPropagation(); setMissionToAddVoce(mission); }}
+                      title="Aggiungi una voce di spesa dimenticata"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Aggiungi riga
+                    </Button>
                     {mission.submitted ? (
                       <span className="inline-flex items-center gap-2">
                         <span className="inline-flex items-center gap-1 text-green-700 border border-green-200 bg-green-50 rounded px-2 py-1 text-[11px] font-medium">
