@@ -896,17 +896,29 @@ const MissionList = ({ projectId = null }) => {
                   <th className="px-3 py-2 text-right font-medium">Importo €</th>
                   <th className="px-3 py-2 text-right font-medium">IVA €</th>
                   <th className="px-3 py-2 text-right font-medium">Eligible €</th>
+                  <th className="px-3 py-2 w-8"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {legacyExpenses.map(e => (
-                  <tr key={e.id} className="hover:bg-gray-50/50">
+                  <tr key={e.id} className="hover:bg-gray-50/50 group">
                     <td className="px-3 py-2 text-gray-600">{fmtDate(e.date)}</td>
                     <td className="px-3 py-2 text-gray-600">{e.place || '—'}</td>
                     <td className="px-3 py-2 text-gray-900 max-w-[200px] truncate">{e.description || '—'}</td>
                     <td className="px-3 py-2 text-right font-semibold">{fmt(e.amount)}</td>
                     <td className="px-3 py-2 text-right text-red-600">{e.iva ? fmt(e.iva) : '—'}</td>
                     <td className="px-3 py-2 text-right text-green-700">{e.eligible_amount ? fmt(e.eligible_amount) : '—'}</td>
+                    <td className="px-3 py-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => deleteExpense(e.id)}
+                        title="Elimina voce"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
