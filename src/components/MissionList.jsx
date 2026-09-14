@@ -302,7 +302,7 @@ const EditVoceDialog = ({ expense, open, onClose, onSave }) => {
             <Input type="number" step="0.01" min="0" value={form.amount} onChange={e => handleChange('amount', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>IVA € <span className="text-gray-400 font-normal">(in euro, se presente)</span></Label>
+            <Label className="text-purple-700 font-semibold">IVA € <span className="text-gray-400 font-normal">(in euro, se presente)</span></Label>
             <Input type="number" step="0.01" min="0" value={form.iva} onChange={e => handleChange('iva', e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -399,7 +399,7 @@ const AddVoceDialog = ({ mission, open, onClose, onAdd }) => {
             <Input type="number" step="0.01" min="0" value={form.amount} onChange={e => handleChange('amount', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>IVA € <span className="text-gray-400 font-normal">(in euro, se presente)</span></Label>
+            <Label className="text-purple-700 font-semibold">IVA € <span className="text-gray-400 font-normal">(in euro, se presente)</span></Label>
             <Input type="number" step="0.01" min="0" value={form.iva} onChange={e => handleChange('iva', e.target.value)} />
           </div>
           <div className="space-y-1">
