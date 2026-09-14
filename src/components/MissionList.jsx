@@ -302,7 +302,7 @@ const EditVoceDialog = ({ expense, open, onClose, onSave }) => {
             <Input type="number" step="0.01" min="0" value={form.amount} onChange={e => handleChange('amount', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>IVA €</Label>
+            <Label>IVA € <span className="text-gray-400 font-normal">(in euro, se presente)</span></Label>
             <Input type="number" step="0.01" min="0" value={form.iva} onChange={e => handleChange('iva', e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -315,7 +315,7 @@ const EditVoceDialog = ({ expense, open, onClose, onSave }) => {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
+          <Button variant="outline" className="text-gray-700" onClick={onClose} disabled={saving}>Annulla</Button>
           <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
             {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvataggio...</> : 'Salva'}
           </Button>
@@ -399,7 +399,7 @@ const AddVoceDialog = ({ mission, open, onClose, onAdd }) => {
             <Input type="number" step="0.01" min="0" value={form.amount} onChange={e => handleChange('amount', e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>IVA €</Label>
+            <Label>IVA € <span className="text-gray-400 font-normal">(in euro, se presente)</span></Label>
             <Input type="number" step="0.01" min="0" value={form.iva} onChange={e => handleChange('iva', e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -412,7 +412,7 @@ const AddVoceDialog = ({ mission, open, onClose, onAdd }) => {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
+          <Button variant="outline" className="text-gray-700" onClick={onClose} disabled={saving}>Annulla</Button>
           <Button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white">
             {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvataggio...</> : 'Aggiungi'}
           </Button>
