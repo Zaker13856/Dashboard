@@ -1,5 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase, invokeAdminUsers } from '@/lib/customSupabaseClient';
+
+// 2FA obbligatorio solo per il ruolo admin (dati finanziari sensibili).
+const MFA_REQUIRED_ROLES = ['admin'];
 
 const AuthContext = createContext();
 
@@ -51,28 +54,53 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [ratesVersion, setRatesVersion] = useState(0);
   const [rates, setRates] = useState([]);
+  // { type: 'setup' } = admin senza fattore TOTP verificato, deve attivarlo.
+  // { type: 'verify', factorId } = admin con TOTP attivo, sessione ancora aal1.
+  const [mfaPending, setMfaPending] = useState(null);
 
-  useEffect(() => {
-    const loadSessionData = async (session) => {
-      if (session?.user) {
-        const profile = await fetchConsultantProfile(session.user.id);
-        if (!profile) {
-          console.error('Auth: session exists but no consultant profile found for', session.user.email);
-          await supabase.auth.signOut();
+  const loadSessionData = useCallback(async (session) => {
+    if (session?.user) {
+      const profile = await fetchConsultantProfile(session.user.id);
+      if (!profile) {
+        console.error('Auth: session exists but no consultant profile found for', session.user.email);
+        await supabase.auth.signOut();
+        setUser(null);
+        setMfaPending(null);
+        return;
+      }
+
+      if (MFA_REQUIRED_ROLES.includes(profile.role)) {
+        const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+        const verifiedTotp = !factorsError && factorsData?.totp?.find((f) => f.status === 'verified');
+
+        if (!verifiedTotp) {
           setUser(null);
+          setMfaPending({ type: 'setup' });
           return;
         }
-        setUser(profile);
-        const [all, allRates] = await Promise.all([fetchAllConsultants(), fetchRates()]);
-        setConsultants(all);
-        setRates(allRates);
-      } else {
-        setUser(null);
-        setConsultants([]);
-        setRates([]);
-      }
-    };
 
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.nextLevel === 'aal2' && aal?.currentLevel !== aal?.nextLevel) {
+          setUser(null);
+          setMfaPending({ type: 'verify', factorId: verifiedTotp.id });
+          return;
+        }
+      }
+
+      setMfaPending(null);
+      setUser(profile);
+      const [all, allRates] = await Promise.all([fetchAllConsultants(), fetchRates()]);
+      setConsultants(all);
+      setRates(allRates);
+    } else {
+      setUser(null);
+      setMfaPending(null);
+      setConsultants([]);
+      setRates([]);
+    }
+  }, []);
+
+  useEffect(() => {
     supabase.auth.getSession()
       .then(({ data: { session } }) => loadSessionData(session))
       .catch((err) => console.error('Auth init failed:', err))
@@ -89,7 +117,7 @@ export const AuthProvider = ({ children }) => {
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadSessionData]);
 
   const login = async (email, password) => {
     try {
@@ -108,6 +136,23 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: "Profilo utente non trovato. Contatta l'amministratore." };
       }
 
+      if (MFA_REQUIRED_ROLES.includes(profile.role)) {
+        const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+        const verifiedTotp = !factorsError && factorsData?.totp?.find((f) => f.status === 'verified');
+
+        if (!verifiedTotp) {
+          setMfaPending({ type: 'setup' });
+          return { success: true, mfaSetupRequired: true };
+        }
+
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.nextLevel === 'aal2' && aal?.currentLevel !== aal?.nextLevel) {
+          setMfaPending({ type: 'verify', factorId: verifiedTotp.id });
+          return { success: true, mfaRequired: true };
+        }
+      }
+
+      await loadSessionData(data.session);
       return { success: true, user: profile };
     } catch (err) {
       console.error('Login error:', err);
@@ -118,6 +163,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     // Clear state first so UI updates immediately even though Header calls logout() without await
     setUser(null);
+    setMfaPending(null);
     setConsultants([]);
     setRates([]);
     await supabase.auth.signOut();
@@ -250,6 +296,69 @@ export const AuthProvider = ({ children }) => {
     return results;
   };
 
+  // --- 2FA (TOTP, compatibile Microsoft/Google Authenticator) ---
+
+  // Avvia l'attivazione: genera un nuovo fattore TOTP e restituisce il QR code da scansionare.
+  const enrollMfa = async () => {
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName: `authenticator-${Date.now()}`,
+    });
+    if (error) return { error: error.message };
+    return { success: true, factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
+  };
+
+  // Conferma l'attivazione con il primo codice a 6 cifre generato dall'app.
+  const verifyMfaEnrollment = async (factorId, code) => {
+    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+    if (challengeError) return { error: challengeError.message };
+    const { error: verifyError } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.id,
+      code: code.trim(),
+    });
+    if (verifyError) return { error: 'Codice non valido. Riprova.' };
+    const { data: { session } } = await supabase.auth.getSession();
+    await loadSessionData(session);
+    return { success: true };
+  };
+
+  // Verifica il codice al login per un fattore TOTP già attivo.
+  const verifyMfaCode = async (code) => {
+    if (!mfaPending?.factorId) return { error: 'Nessuna verifica 2FA in corso.' };
+    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: mfaPending.factorId });
+    if (challengeError) return { error: challengeError.message };
+    const { error: verifyError } = await supabase.auth.mfa.verify({
+      factorId: mfaPending.factorId,
+      challengeId: challenge.id,
+      code: code.trim(),
+    });
+    if (verifyError) return { error: 'Codice non valido. Riprova.' };
+    const { data: { session } } = await supabase.auth.getSession();
+    await loadSessionData(session);
+    return { success: true };
+  };
+
+  // Annulla il login in corso mentre si è fermi allo step MFA (es. l'utente vuole riprovare con un altro account).
+  const cancelMfaLogin = async () => {
+    await supabase.auth.signOut();
+    setMfaPending(null);
+  };
+
+  // Elenco fattori TOTP dell'utente loggato (per il pannello Sicurezza).
+  const listMfaFactors = async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) return { error: error.message };
+    return { success: true, factors: data?.totp || [] };
+  };
+
+  // Rimuove un fattore (es. per sostituire il telefono). Richiede sessione già aal2.
+  const unenrollMfa = async (factorId) => {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) return { error: error.message };
+    return { success: true };
+  };
+
   const resetAllConsultantPasswords = async () => {
     const withAuth = consultants.filter(c => c.auth_user_id);
     const results = await Promise.all(
@@ -283,6 +392,13 @@ export const AuthProvider = ({ children }) => {
       resetConsultantPassword,
       resetAllConsultantPasswords,
       createAuthForConsultants,
+      mfaPending,
+      enrollMfa,
+      verifyMfaEnrollment,
+      verifyMfaCode,
+      cancelMfaLogin,
+      listMfaFactors,
+      unenrollMfa,
     }}>
       {loading ? (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
