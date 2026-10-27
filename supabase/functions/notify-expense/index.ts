@@ -360,9 +360,11 @@ Deno.serve(async (req) => {
   }
 
   // Marca missione come inviata
+  // gli scontrini restano 20 giorni come i link (poi li cancella receipts-cleanup)
   await admin.from('missions').update({
     submitted: true,
     submitted_at: new Date().toISOString(),
+    receipts_expire_at: new Date(Date.now() + 60 * 60 * 24 * 20 * 1000).toISOString(),
   }).eq('id', body.mission_id);
 
   return json({ success: true });
