@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useAuth } from '@/context/AuthContext';
 
 const TimesheetContext = createContext();
 
@@ -15,6 +16,9 @@ const MONTH_NAMES = [
 ];
 
 export const TimesheetProvider = ({ children }) => {
+  // Ricarica dopo il login: al primo caricamento l'utente non è ancora entrato e il database non restituisce niente
+  const { user } = useAuth();
+  const userId = user?.id;
   const [projects, setProjects] = useState([]);
   const [entries, setEntries] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -45,7 +49,7 @@ export const TimesheetProvider = ({ children }) => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [userId]);
 
   const addHistoryEntry = (action, details) => {
     setHistory(prev => [{

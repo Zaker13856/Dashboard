@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useAuth } from '@/context/AuthContext';
 import { missionHeading } from '@/lib/costCenter';
 
 const MissionContext = createContext();
 export const useMissions = () => useContext(MissionContext);
 
 export const MissionProvider = ({ children }) => {
+  // Ricarica dopo il login: al primo caricamento l'utente non è ancora entrato e il database non restituisce niente
+  const { user } = useAuth();
+  const userId = user?.id;
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +39,7 @@ export const MissionProvider = ({ children }) => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'missions' }, fetchMissions)
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [fetchMissions]);
+  }, [fetchMissions, userId]);
 
   const createMission = async ({ consultantId, projectId, place, dateFrom, dateTo, travellingWith, notes, costCenter, costCenterNote }) => {
     const payload = {

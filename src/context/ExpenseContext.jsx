@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useAuth } from '@/context/AuthContext';
 
 const ExpenseContext = createContext();
 
@@ -10,6 +11,9 @@ const SUBCONTRACT_TYPE = 'subcontract';
 const OTHER_COST_TYPE = 'other_cost';
 
 export const ExpenseProvider = ({ children }) => {
+  // Ricarica dopo il login: al primo caricamento l'utente non è ancora entrato e il database non restituisce niente
+  const { user } = useAuth();
+  const userId = user?.id;
   const [allExpenses, setAllExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +40,7 @@ export const ExpenseProvider = ({ children }) => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [userId]);
 
   // Split into categories based on type field
   const expenses = allExpenses.filter(e => e.type !== SUBCONTRACT_TYPE && e.type !== OTHER_COST_TYPE);
