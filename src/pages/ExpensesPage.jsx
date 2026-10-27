@@ -4,7 +4,7 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import * as XLSX from 'xlsx';
 
-const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+// Anni consultabili nelle schede Tender/Promozione: dall'anno in corso fino al 2022
+const CURRENT_YEAR = new Date().getFullYear();
+const CC_YEARS = Array.from({ length: CURRENT_YEAR - 2021 }, (_, i) => CURRENT_YEAR - i);
+
+const fmt = n =>new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
 const TYPE_CONFIG = {
   travel:        { label: 'Travel',      color: 'bg-blue-100 text-blue-700 border-blue-200',     icon: Plane },
@@ -68,24 +72,25 @@ const BudgetBar = ({ icon: Icon, label, consumed, budget, color }) => {
 };
 
 // ─── Quick Add Form ──────────────────────────────────────────
-const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
+const QuickAddForm = ({ projects, consultants = [], type: fixedType, costCenter = null, onSaved }) => {
   const { toast } = useToast();
+  // Tender/Promozione: nessun progetto, il tipo spesa si sceglie nel form
+  const [ccType, setCcType] = useState('travel');
+  const type = costCenter ? ccType : fixedType;
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({ project_id: '', date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '', days: '', consultant_id: '' });
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.project_id || !form.amount || !form.description) {
-      toast({ title: 'Campi obbligatori', description: 'Progetto, descrizione e importo sono richiesti.', variant: 'destructive' });
+    if ((!costCenter && !form.project_id) || !form.amount || !form.description) {
+      toast({ title: 'Campi obbligatori', description: costCenter ? 'Descrizione e importo sono richiesti.' : 'Progetto, descrizione e importo sono richiesti.', variant: 'destructive' });
       return;
     }
     const amt  = parseFloat(form.amount) || 0;
     const iva  = parseFloat(form.iva) || null;
     const elig = form.eligible_amount ? parseFloat(form.eligible_amount) : (iva != null ? Math.round((amt - iva) * 100) / 100 : amt);
 
-    // "cc:tender" / "cc:promozione" = centro di costo senza progetto
-    const costCenter = form.project_id.startsWith('cc:') ? form.project_id.slice(3) : null;
     const record = {
       project_id:      costCenter ? null : form.project_id,
       ...(costCenter ? { cost_center: costCenter } : {}),
@@ -118,23 +123,33 @@ const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
     subcontract:   { title: 'Subcontract', color: 'bg-purple-600 hover:bg-purple-700' },
     third_parties: { title: '3rd Parties', color: 'bg-pink-600 hover:bg-pink-700' },
   };
-  const cfg = labels[type];
+  const cfg = costCenter
+    ? { title: COST_CENTER_LABELS[costCenter], color: costCenter === 'tender' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-teal-600 hover:bg-teal-700' }
+    : labels[type];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="space-y-1">
-        <Label className="text-xs font-semibold text-gray-500">Progetto *</Label>
-        <Select value={form.project_id} onValueChange={v => f('project_id', v)}>
-          <SelectTrigger><SelectValue placeholder="Seleziona progetto" /></SelectTrigger>
-          <SelectContent>
-            {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            <SelectSeparator />
-            {Object.entries(COST_CENTER_LABELS).map(([k, label]) => (
-              <SelectItem key={k} value={`cc:${k}`} className="font-semibold text-amber-700">{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {costCenter ? (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Tipo spesa *</Label>
+          <Select value={ccType} onValueChange={setCcType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(TYPE_CONFIG).map(([k, c]) => <SelectItem key={k} value={k}>{c.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Progetto *</Label>
+          <Select value={form.project_id} onValueChange={v => f('project_id', v)}>
+            <SelectTrigger><SelectValue placeholder="Seleziona progetto" /></SelectTrigger>
+            <SelectContent>
+              {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
@@ -181,7 +196,7 @@ const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
 
       <div className="space-y-1">
         <Label className="text-xs font-semibold text-gray-500">Descrizione *</Label>
-        <Input placeholder={type === 'travel' ? "es. Missione WP3 meeting" : type === 'subcontract' ? "es. Consulenza legale" : type === 'third_parties' ? "es. Prestazione terza parte" : "es. Licenza software, hosting..."} value={form.description} onChange={e => f('description', e.target.value)} required />
+        <Input placeholder={costCenter ? "Di cosa si tratta, es. Tender CINEA mobilità urbana" : type === 'travel' ? "es. Missione WP3 meeting" : type === 'subcontract' ? "es. Consulenza legale" : type === 'third_parties' ? "es. Prestazione terza parte" : "es. Licenza software, hosting..."} value={form.description} onChange={e => f('description', e.target.value)} required />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -215,6 +230,7 @@ const ExpensesPage = () => {
   const [editSaving, setEditSaving] = useState(false);
 
   const [missions, setMissions] = useState([]);
+  const [ccYear, setCcYear] = useState({ tender: CURRENT_YEAR, promozione: CURRENT_YEAR });
 
   const fetchAll = useCallback(async () => {
     const [{ data: exp }, { data: prj }, { data: cons }, { data: mis }] = await Promise.all([
@@ -261,18 +277,8 @@ const ExpensesPage = () => {
     return m;
   }, [missions]);
 
-  // Group by project — le voci con mission_id vengono accorpate in una riga per missione
-  const grouped = useMemo(() => {
-    const map = {};
-    filtered.forEach(e => {
-      // Tender/Promozione: gruppi propri, separati dai progetti
-      const cc = e.cost_center && e.cost_center !== 'progetto' ? e.cost_center : null;
-      const pid = cc ? `cc-${cc}` : e.project_id;
-      const name = cc ? (COST_CENTER_LABELS[cc] || cc.toUpperCase()) : (projectMap[pid] || 'Sconosciuto');
-      if (!map[pid]) map[pid] = { name, isCostCenter: !!cc, items: [] };
-      map[pid].items.push(e);
-    });
-
+  // Righe da mostrare: le voci con mission_id vengono accorpate in una riga per missione
+  const toDisplayItems = useCallback((items) => {
     const fmtRange = (from, to) => {
       try {
         const f = new Date(from), t = new Date(to);
@@ -284,45 +290,61 @@ const ExpensesPage = () => {
       } catch { return ''; }
     };
 
+    const byMission = {};
+    const displayItems = [];
+    items.forEach(e => {
+      if (e.mission_id && missionMap[e.mission_id]) {
+        if (!byMission[e.mission_id]) {
+          const mi = missionMap[e.mission_id];
+          byMission[e.mission_id] = {
+            id: 'mission-' + e.mission_id,
+            _isMission: true,
+            _voci: [],
+            mission: mi,
+            project_id: e.project_id,
+            type: 'travel',
+            date: mi.date_from,
+            date_label: fmtRange(mi.date_from, mi.date_to),
+            place: mi.place,
+            days: Math.round((new Date(mi.date_to) - new Date(mi.date_from)) / 86400000) + 1,
+            consultant_name: e.consultant_name,
+            amount: 0, iva: 0, eligible_amount: 0,
+          };
+          displayItems.push(byMission[e.mission_id]);
+        }
+        const m = byMission[e.mission_id];
+        m._voci.push(e);
+        m.amount += parseFloat(e.amount) || 0;
+        m.iva += parseFloat(e.iva) || 0;
+        m.eligible_amount += parseFloat(e.eligible_amount) || 0;
+      } else {
+        displayItems.push(e);
+      }
+    });
+    displayItems.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    return displayItems;
+  }, [missionMap]);
+
+  // Group by project (Tender/Promozione hanno schede proprie)
+  const grouped = useMemo(() => {
+    const map = {};
+    filtered.forEach(e => {
+      if (e.cost_center && e.cost_center !== 'progetto') return;
+      const pid = e.project_id;
+      if (!map[pid]) map[pid] = { name: projectMap[pid] || 'Sconosciuto', items: [] };
+      map[pid].items.push(e);
+    });
     return Object.entries(map)
-      .map(([id, data]) => {
-        // Aggregate mission rows for display
-        const byMission = {};
-        const displayItems = [];
-        data.items.forEach(e => {
-          if (e.mission_id && missionMap[e.mission_id]) {
-            if (!byMission[e.mission_id]) {
-              const mi = missionMap[e.mission_id];
-              byMission[e.mission_id] = {
-                id: 'mission-' + e.mission_id,
-                _isMission: true,
-                _voci: [],
-                mission: mi,
-                project_id: e.project_id,
-                type: 'travel',
-                date: mi.date_from,
-                date_label: fmtRange(mi.date_from, mi.date_to),
-                place: mi.place,
-                days: Math.round((new Date(mi.date_to) - new Date(mi.date_from)) / 86400000) + 1,
-                consultant_name: e.consultant_name,
-                amount: 0, iva: 0, eligible_amount: 0,
-              };
-              displayItems.push(byMission[e.mission_id]);
-            }
-            const m = byMission[e.mission_id];
-            m._voci.push(e);
-            m.amount += parseFloat(e.amount) || 0;
-            m.iva += parseFloat(e.iva) || 0;
-            m.eligible_amount += parseFloat(e.eligible_amount) || 0;
-          } else {
-            displayItems.push(e);
-          }
-        });
-        displayItems.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        return { id, ...data, displayItems };
-      })
-      .sort((a, b) => (a.isCostCenter - b.isCostCenter) || a.name.localeCompare(b.name));
-  }, [filtered, projectMap, missionMap]);
+      .map(([id, data]) => ({ id, ...data, displayItems: toDisplayItems(data.items) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [filtered, projectMap, toDisplayItems]);
+
+  // Schede Tender / Promozione: voci dell'anno scelto
+  const ccGroups = useMemo(() => Object.fromEntries(Object.keys(COST_CENTER_LABELS).map(cc => {
+    const year = String(ccYear[cc]);
+    const items = expenses.filter(e => e.cost_center === cc && (e.date || '').startsWith(year));
+    return [cc, { id: `cc-${cc}`, name: COST_CENTER_LABELS[cc], items, displayItems: toDisplayItems(items) }];
+  })), [expenses, ccYear, toDisplayItems]);
 
   // Totali globali
   const totals = useMemo(() => {
@@ -441,6 +463,153 @@ const ExpensesPage = () => {
     XLSX.writeFile(wb, `Spese_${projectName.replace(/\s+/g, '_')}.xlsx`);
   };
 
+  // Tabella voci di un gruppo (progetto o Tender/Promozione di un anno)
+  const renderTable = (group) => {
+    const gEligible = group.items
+      .filter(e => e.type === 'travel' || e.type === 'other_cost')
+      .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+    return (
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wide text-[10px]">
+              <th className="px-3 py-2 text-left font-medium">Data</th>
+              <th className="px-3 py-2 text-left font-medium">Luogo</th>
+              <th className="px-3 py-2 text-center font-medium">Gg</th>
+              <th className="px-3 py-2 text-left font-medium">Descrizione</th>
+              <th className="px-3 py-2 text-left font-medium">Tipo</th>
+              <th className="px-3 py-2 text-left font-medium">Consulente</th>
+              <th className="px-3 py-2 text-right font-medium">Importo €</th>
+              <th className="px-3 py-2 text-right font-medium">IVA €</th>
+              <th className="px-3 py-2 text-right font-medium">Ammissibile €</th>
+              <th className="px-3 py-2 w-10"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {(group.displayItems || group.items).map(e => {
+              const cfg = TYPE_CONFIG[e.type] || TYPE_CONFIG.other_cost;
+              if (e._isMission) {
+                return (
+                  <tr key={e.id} className="hover:bg-blue-50/40 bg-blue-50/20">
+                    <td className="px-3 py-2 text-gray-900 font-semibold whitespace-nowrap">{e.date_label}</td>
+                    <td className="px-3 py-2 text-gray-900 font-semibold">
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-blue-500" />
+                        {e.place}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{e.days}</span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-700 font-medium">
+                      Nota spese · {e._voci.length} voci
+                      {e.mission?.cost_center_note ? <span className="text-amber-700"> — {e.mission.cost_center_note}</span> : null}
+                      {e.mission?.travelling_with ? <span className="text-gray-400 font-normal"> — con {e.mission.travelling_with}</span> : null}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline" className={cn("text-[10px] font-medium", TYPE_CONFIG.travel.color)}>Travel</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-gray-700 text-[11px]">{e.consultant_name || '—'}</td>
+                    <td className="px-3 py-2 text-right font-bold text-gray-900">{fmt(e.amount)}</td>
+                    <td className="px-3 py-2 text-right text-red-600">{e.iva ? fmt(e.iva) : '—'}</td>
+                    <td className="px-3 py-2 text-right font-bold text-green-700">{fmt(e.eligible_amount)}</td>
+                    <td className="px-3 py-1"></td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={e.id} className="hover:bg-gray-50/50 group">
+                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                    {e.date_label || (e.date ? new Date(e.date).toLocaleDateString('it-IT') : '—')}
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">
+                    {e.place ? (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-gray-400" />
+                        {e.place}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-center text-gray-700">
+                    {e.type === 'travel' && e.days ? (
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{e.days}</span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-gray-900 font-medium max-w-[200px] truncate" title={e.description}>
+                    {e.description}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Select value={e.type} onValueChange={(v) => handleChangeType(e.id, v)}>
+                      <SelectTrigger
+                        className={cn(
+                          "h-6 px-2 py-0 text-[10px] font-medium border rounded-full w-auto gap-1 [&>svg]:h-3 [&>svg]:w-3",
+                          cfg.color
+                        )}
+                        title="Clicca per cambiare tipo"
+                      >
+                        <SelectValue>{cfg.label}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="travel">Travel</SelectItem>
+                        <SelectItem value="other_cost">Other Cost</SelectItem>
+                        <SelectItem value="subcontract">Subcontract</SelectItem>
+                        <SelectItem value="third_parties">3rd Parties</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2 text-gray-700 text-[11px]">
+                    {e.consultant_name || '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(e.amount)}</td>
+                  <td className="px-3 py-2 text-right text-red-600">
+                    {e.iva ? fmt(e.iva) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold text-green-700">
+                    {e.eligible_amount ? fmt(e.eligible_amount) : '—'}
+                  </td>
+                  <td className="px-3 py-1">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => openEdit(e)}
+                        className="text-blue-400 hover:text-blue-600 p-1 rounded"
+                        title="Modifica"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(e.id)}
+                        className="text-red-400 hover:text-red-600 p-1 rounded"
+                        title="Elimina"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {/* Totale progetto */}
+          <tfoot>
+            <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold text-xs">
+              <td colSpan={6} className="px-3 py-2 text-gray-700 uppercase tracking-wide">Totale {group.name}</td>
+              <td className="px-3 py-2 text-right text-gray-900">
+                {fmt(group.items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))}
+              </td>
+              <td className="px-3 py-2 text-right text-red-600">
+                {fmt(group.items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0))}
+              </td>
+              <td className="px-3 py-2 text-right text-green-700">
+                {fmt(gEligible)}
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6 pb-12">
@@ -456,8 +625,8 @@ const ExpensesPage = () => {
             { label: 'Other Cost',  value: totals.other,         icon: Receipt,  color: 'bg-amber-50 text-amber-700' },
             { label: 'Subcontract', value: totals.subcontract,   icon: FileText, color: 'bg-purple-50 text-purple-700' },
             { label: '3rd Parties', value: totals.third_parties, icon: Users,    color: 'bg-pink-50 text-pink-700' },
-            { label: `Tender ${new Date().getFullYear()}`,     value: totals.tender,     icon: Tag, color: 'bg-orange-50 text-orange-700' },
-            { label: `Promozione ${new Date().getFullYear()}`, value: totals.promozione, icon: Tag, color: 'bg-teal-50 text-teal-700' },
+            { label: 'Tender',     value: totals.tender,     icon: Tag, color: 'bg-orange-50 text-orange-700' },
+            { label: 'Promozione', value: totals.promozione, icon: Tag, color: 'bg-teal-50 text-teal-700' },
           ].map(({ label, value, icon: Icon, color }) => (
             <Card key={label} className="border-gray-100 shadow-sm">
               <CardContent className="p-4 flex items-center gap-3">
@@ -486,6 +655,7 @@ const ExpensesPage = () => {
                 <TabsTrigger value="other_cost" className="flex-1 gap-1"><Receipt className="w-3 h-3" />Other Cost</TabsTrigger>
                 <TabsTrigger value="subcontract" className="flex-1 gap-1"><Briefcase className="w-3 h-3" />Subcontract</TabsTrigger>
                 <TabsTrigger value="third_parties" className="flex-1 gap-1"><Users className="w-3 h-3" />3rd Parties</TabsTrigger>
+                <TabsTrigger value="cost_centers" className="flex-1 gap-1"><Tag className="w-3 h-3" />Tender / Promozione</TabsTrigger>
               </TabsList>
               <TabsContent value="travel" className="mt-4">
                 <QuickAddForm projects={projects} consultants={consultants} type="travel" onSaved={fetchAll} />
@@ -499,268 +669,203 @@ const ExpensesPage = () => {
               <TabsContent value="third_parties" className="mt-4">
                 <QuickAddForm projects={projects} type="third_parties" onSaved={fetchAll} />
               </TabsContent>
+              <TabsContent value="cost_centers" className="mt-4">
+                <Tabs defaultValue="tender" className="w-full">
+                  <TabsList className="bg-gray-100 p-1">
+                    <TabsTrigger value="tender" className="gap-1">Tender</TabsTrigger>
+                    <TabsTrigger value="promozione" className="gap-1">Promozione</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="tender" className="mt-4">
+                    <QuickAddForm projects={projects} consultants={consultants} costCenter="tender" onSaved={fetchAll} />
+                  </TabsContent>
+                  <TabsContent value="promozione" className="mt-4">
+                    <QuickAddForm projects={projects} consultants={consultants} costCenter="promozione" onSaved={fetchAll} />
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
 
-        {/* Filtri */}
-        <div className="flex flex-col sm:flex-row gap-3 items-center">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Cerca per progetto, descrizione o luogo..."
-              className="pl-8 text-gray-900"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Tutti i tipi" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tutti i tipi</SelectItem>
-              <SelectItem value="travel">Travel</SelectItem>
-              <SelectItem value="other_cost">Other Cost</SelectItem>
-              <SelectItem value="subcontract">Subcontract</SelectItem>
-              <SelectItem value="third_parties">3rd Parties</SelectItem>
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-gray-400 whitespace-nowrap">{filtered.length} record</span>
-        </div>
+        {/* Elenco spese: Progetti / Tender / Promozione */}
+        <Tabs defaultValue="progetti" className="w-full">
+          <TabsList className="bg-gray-100 p-1 w-full sm:w-auto">
+            <TabsTrigger value="progetti" className="flex-1 gap-1"><Layers className="w-3 h-3" />Progetti</TabsTrigger>
+            <TabsTrigger value="tender" className="flex-1 gap-1"><Tag className="w-3 h-3" />Tender</TabsTrigger>
+            <TabsTrigger value="promozione" className="flex-1 gap-1"><Tag className="w-3 h-3" />Promozione</TabsTrigger>
+          </TabsList>
 
-        {/* Tabella per progetto */}
-        {loading ? (
-          <div className="text-center py-16 text-gray-400">Caricamento...</div>
-        ) : grouped.length === 0 ? (
-          <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
-            Nessuna spesa trovata.
-          </div>
-        ) : (
-          <Accordion type="multiple" className="space-y-3">
-            {grouped.map(group => {
-              const sumByType = t => group.items.filter(e => e.type === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              const gTravel   = sumByType('travel');
-              const gOther    = sumByType('other_cost');
-              const gSub      = sumByType('subcontract');
-              const gThird    = sumByType('third_parties');
-              const gEligible = group.items
-                .filter(e => e.type === 'travel' || e.type === 'other_cost')
-                .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
+          <TabsContent value="progetti" className="mt-4 space-y-6">
+            {/* Filtri */}
+            <div className="flex flex-col sm:flex-row gap-3 items-center">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Cerca per progetto, descrizione o luogo..."
+                  className="pl-8 text-gray-900"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Tutti i tipi" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tutti i tipi</SelectItem>
+                  <SelectItem value="travel">Travel</SelectItem>
+                  <SelectItem value="other_cost">Other Cost</SelectItem>
+                  <SelectItem value="subcontract">Subcontract</SelectItem>
+                  <SelectItem value="third_parties">3rd Parties</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-gray-400 whitespace-nowrap">{filtered.length} record</span>
+            </div>
 
-              return (
-                <AccordionItem key={group.id} value={group.id} className="border rounded-xl bg-white shadow-sm">
-                  <AccordionTrigger className="px-5 py-4 hover:no-underline">
-                    <div className="flex items-center justify-between w-full pr-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                          <Layers className="w-4 h-4 text-blue-600" />
+            {/* Tabella per progetto */}
+            {loading ? (
+              <div className="text-center py-16 text-gray-400">Caricamento...</div>
+            ) : grouped.length === 0 ? (
+              <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
+                Nessuna spesa trovata.
+              </div>
+            ) : (
+              <Accordion type="multiple" className="space-y-3">
+                {grouped.map(group => {
+                  const sumByType = t => group.items.filter(e => e.type === t).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                  const gTravel   = sumByType('travel');
+                  const gOther    = sumByType('other_cost');
+                  const gSub      = sumByType('subcontract');
+                  const gThird    = sumByType('third_parties');
+
+                  return (
+                    <AccordionItem key={group.id} value={group.id} className="border rounded-xl bg-white shadow-sm">
+                      <AccordionTrigger className="px-5 py-4 hover:no-underline">
+                        <div className="flex items-center justify-between w-full pr-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                              <Layers className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div className="text-left">
+                              <p className="font-bold text-gray-900">{group.name}</p>
+                              <p className="text-xs text-gray-400">{group.items.length} voci</p>
+                            </div>
+                          </div>
+                          {(() => {
+                            const proj = projects.find(p => p.id === group.id) || {};
+                            const sT = parseFloat(proj.sold_travel) || 0;
+                            const sO = parseFloat(proj.sold_other_costs) || 0;
+                            const sS = parseFloat(proj.sold_subcontracting) || 0;
+                            const s3 = parseFloat(proj.sold_third_parties) || 0;
+                            return (
+                              <div className="flex items-center gap-4 text-xs">
+                                <span className="text-gray-400 font-medium uppercase tracking-wide text-[10px]">Venduto:</span>
+                                <span className="text-blue-600 font-semibold">Travel: € {fmt(sT)}</span>
+                                <span className="text-amber-600 font-semibold">Other: € {fmt(sO)}</span>
+                                <span className="text-purple-600 font-semibold">Sub: € {fmt(sS)}</span>
+                                <span className="text-pink-600 font-semibold">3rd: € {fmt(s3)}</span>
+                                <span className="text-green-700 font-bold">Tot: € {fmt(sT + sO + sS + s3)}</span>
+                              </div>
+                            );
+                          })()}
                         </div>
-                        <div className="text-left">
+                      </AccordionTrigger>
+                      <div className="flex justify-end px-5 -mt-2 mb-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs text-gray-600 border-gray-200 hover:bg-gray-50"
+                          onClick={(e) => { e.stopPropagation(); exportToXLS(group.name, group.items); }}
+                        >
+                          <FileSpreadsheet className="w-3 h-3 mr-1" />Excel
+                        </Button>
+                      </div>
+                      <AccordionContent className="px-2 pb-3">
+                        {/* Budget bars (su tutte le spese del progetto, non filtrate) */}
+                        {(() => {
+                          const proj = projects.find(p => p.id === group.id);
+                          if (!proj) return null;
+                          const projExp = expenses.filter(e => e.project_id === group.id);
+                          return (
+                            <div className="space-y-3 px-3 pt-2 pb-5 mb-4 border-b">
+                              {Object.entries(BUDGET_CFG).map(([type, cfg]) => {
+                                const consumed = projExp
+                                  .filter(e => e.type === type)
+                                  .reduce((s, e) => s + (parseFloat(e.eligible_amount) || parseFloat(e.amount) || 0), 0);
+                                const budget = parseFloat(proj[cfg.budgetKey]) || 0;
+                                return (
+                                  <BudgetBar
+                                    key={type}
+                                    icon={cfg.icon}
+                                    label={cfg.label}
+                                    consumed={consumed}
+                                    budget={budget}
+                                    color={{ text: cfg.text, bar: cfg.bar }}
+                                  />
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                        {renderTable(group)}
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            )}
+          </TabsContent>
+
+          {Object.entries(ccGroups).map(([cc, group]) => {
+            const total = group.items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            const isTender = cc === 'tender';
+            return (
+              <TabsContent key={cc} value={cc} className="mt-4">
+                <Card className="border-gray-200 shadow-sm">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-lg", isTender ? 'bg-orange-50 text-orange-700' : 'bg-teal-50 text-teal-700')}>
+                          <Tag className="w-4 h-4" />
+                        </div>
+                        <div>
                           <p className="font-bold text-gray-900">{group.name}</p>
-                          <p className="text-xs text-gray-400">{group.items.length} voci</p>
+                          <p className="text-xs text-gray-400">{group.items.length} voci · totale € {fmt(total)}</p>
                         </div>
                       </div>
-                      {!group.isCostCenter && (() => {
-                        const proj = projects.find(p => p.id === group.id) || {};
-                        const sT = parseFloat(proj.sold_travel) || 0;
-                        const sO = parseFloat(proj.sold_other_costs) || 0;
-                        const sS = parseFloat(proj.sold_subcontracting) || 0;
-                        const s3 = parseFloat(proj.sold_third_parties) || 0;
-                        return (
-                          <div className="flex items-center gap-4 text-xs">
-                            <span className="text-gray-400 font-medium uppercase tracking-wide text-[10px]">Venduto:</span>
-                            <span className="text-blue-600 font-semibold">Travel: € {fmt(sT)}</span>
-                            <span className="text-amber-600 font-semibold">Other: € {fmt(sO)}</span>
-                            <span className="text-purple-600 font-semibold">Sub: € {fmt(sS)}</span>
-                            <span className="text-pink-600 font-semibold">3rd: € {fmt(s3)}</span>
-                            <span className="text-green-700 font-bold">Tot: € {fmt(sT + sO + sS + s3)}</span>
-                          </div>
-                        );
-                      })()}
+                      <div className="flex items-center gap-2">
+                        <Select value={String(ccYear[cc])} onValueChange={v => setCcYear(prev => ({ ...prev, [cc]: Number(v) }))}>
+                          <SelectTrigger className="w-[110px] h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CC_YEARS.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-xs text-gray-600 border-gray-200 hover:bg-gray-50"
+                          disabled={group.items.length === 0}
+                          onClick={() => exportToXLS(`${group.name} ${ccYear[cc]}`, group.items)}
+                        >
+                          <FileSpreadsheet className="w-3 h-3 mr-1" />Excel
+                        </Button>
+                      </div>
                     </div>
-                  </AccordionTrigger>
-                  <div className="flex justify-end px-5 -mt-2 mb-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 text-xs text-gray-600 border-gray-200 hover:bg-gray-50"
-                      onClick={(e) => { e.stopPropagation(); exportToXLS(group.name, group.items); }}
-                    >
-                      <FileSpreadsheet className="w-3 h-3 mr-1" />Excel
-                    </Button>
-                  </div>
-                  <AccordionContent className="px-2 pb-3">
-                    {/* Budget bars (su tutte le spese del progetto, non filtrate) */}
-                    {(() => {
-                      const proj = projects.find(p => p.id === group.id);
-                      if (!proj) return null;
-                      const projExp = expenses.filter(e => e.project_id === group.id);
-                      return (
-                        <div className="space-y-3 px-3 pt-2 pb-5 mb-4 border-b">
-                          {Object.entries(BUDGET_CFG).map(([type, cfg]) => {
-                            const consumed = projExp
-                              .filter(e => e.type === type)
-                              .reduce((s, e) => s + (parseFloat(e.eligible_amount) || parseFloat(e.amount) || 0), 0);
-                            const budget = parseFloat(proj[cfg.budgetKey]) || 0;
-                            return (
-                              <BudgetBar
-                                key={type}
-                                icon={cfg.icon}
-                                label={cfg.label}
-                                consumed={consumed}
-                                budget={budget}
-                                color={{ text: cfg.text, bar: cfg.bar }}
-                              />
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                    <div className="overflow-x-auto rounded-lg border border-gray-200">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wide text-[10px]">
-                            <th className="px-3 py-2 text-left font-medium">Data</th>
-                            <th className="px-3 py-2 text-left font-medium">Luogo</th>
-                            <th className="px-3 py-2 text-center font-medium">Gg</th>
-                            <th className="px-3 py-2 text-left font-medium">Descrizione</th>
-                            <th className="px-3 py-2 text-left font-medium">Tipo</th>
-                            <th className="px-3 py-2 text-left font-medium">Consulente</th>
-                            <th className="px-3 py-2 text-right font-medium">Importo €</th>
-                            <th className="px-3 py-2 text-right font-medium">IVA €</th>
-                            <th className="px-3 py-2 text-right font-medium">Ammissibile €</th>
-                            <th className="px-3 py-2 w-10"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {(group.displayItems || group.items).map(e => {
-                            const cfg = TYPE_CONFIG[e.type] || TYPE_CONFIG.other_cost;
-                            if (e._isMission) {
-                              return (
-                                <tr key={e.id} className="hover:bg-blue-50/40 bg-blue-50/20">
-                                  <td className="px-3 py-2 text-gray-900 font-semibold whitespace-nowrap">{e.date_label}</td>
-                                  <td className="px-3 py-2 text-gray-900 font-semibold">
-                                    <span className="flex items-center gap-1">
-                                      <MapPin className="w-3 h-3 text-blue-500" />
-                                      {e.place}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2 text-center">
-                                    <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{e.days}</span>
-                                  </td>
-                                  <td className="px-3 py-2 text-gray-700 font-medium">
-                                    Nota spese · {e._voci.length} voci
-                                    {e.mission?.cost_center_note ? <span className="text-amber-700"> — {e.mission.cost_center_note}</span> : null}
-                                    {e.mission?.travelling_with ? <span className="text-gray-400 font-normal"> — con {e.mission.travelling_with}</span> : null}
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <Badge variant="outline" className={cn("text-[10px] font-medium", TYPE_CONFIG.travel.color)}>Travel</Badge>
-                                  </td>
-                                  <td className="px-3 py-2 text-gray-700 text-[11px]">{e.consultant_name || '—'}</td>
-                                  <td className="px-3 py-2 text-right font-bold text-gray-900">{fmt(e.amount)}</td>
-                                  <td className="px-3 py-2 text-right text-red-600">{e.iva ? fmt(e.iva) : '—'}</td>
-                                  <td className="px-3 py-2 text-right font-bold text-green-700">{fmt(e.eligible_amount)}</td>
-                                  <td className="px-3 py-1"></td>
-                                </tr>
-                              );
-                            }
-                            return (
-                              <tr key={e.id} className="hover:bg-gray-50/50 group">
-                                <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                                  {e.date_label || (e.date ? new Date(e.date).toLocaleDateString('it-IT') : '—')}
-                                </td>
-                                <td className="px-3 py-2 text-gray-700">
-                                  {e.place ? (
-                                    <span className="flex items-center gap-1">
-                                      <MapPin className="w-3 h-3 text-gray-400" />
-                                      {e.place}
-                                    </span>
-                                  ) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-center text-gray-700">
-                                  {e.type === 'travel' && e.days ? (
-                                    <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{e.days}</span>
-                                  ) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-gray-900 font-medium max-w-[200px] truncate" title={e.description}>
-                                  {e.description}
-                                </td>
-                                <td className="px-3 py-2">
-                                  <Select value={e.type} onValueChange={(v) => handleChangeType(e.id, v)}>
-                                    <SelectTrigger
-                                      className={cn(
-                                        "h-6 px-2 py-0 text-[10px] font-medium border rounded-full w-auto gap-1 [&>svg]:h-3 [&>svg]:w-3",
-                                        cfg.color
-                                      )}
-                                      title="Clicca per cambiare tipo"
-                                    >
-                                      <SelectValue>{cfg.label}</SelectValue>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="travel">Travel</SelectItem>
-                                      <SelectItem value="other_cost">Other Cost</SelectItem>
-                                      <SelectItem value="subcontract">Subcontract</SelectItem>
-                                      <SelectItem value="third_parties">3rd Parties</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </td>
-                                <td className="px-3 py-2 text-gray-700 text-[11px]">
-                                  {e.consultant_name || '—'}
-                                </td>
-                                <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(e.amount)}</td>
-                                <td className="px-3 py-2 text-right text-red-600">
-                                  {e.iva ? fmt(e.iva) : '—'}
-                                </td>
-                                <td className="px-3 py-2 text-right font-semibold text-green-700">
-                                  {e.eligible_amount ? fmt(e.eligible_amount) : '—'}
-                                </td>
-                                <td className="px-3 py-1">
-                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => openEdit(e)}
-                                      className="text-blue-400 hover:text-blue-600 p-1 rounded"
-                                      title="Modifica"
-                                    >
-                                      <Pencil className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(e.id)}
-                                      className="text-red-400 hover:text-red-600 p-1 rounded"
-                                      title="Elimina"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        {/* Totale progetto */}
-                        <tfoot>
-                          <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold text-xs">
-                            <td colSpan={6} className="px-3 py-2 text-gray-700 uppercase tracking-wide">Totale {group.name}</td>
-                            <td className="px-3 py-2 text-right text-gray-900">
-                              {fmt(group.items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))}
-                            </td>
-                            <td className="px-3 py-2 text-right text-red-600">
-                              {fmt(group.items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0))}
-                            </td>
-                            <td className="px-3 py-2 text-right text-green-700">
-                              {fmt(gEligible)}
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              );
-            })}
-          </Accordion>
-        )}
+                    {loading ? (
+                      <div className="text-center py-10 text-gray-400">Caricamento...</div>
+                    ) : group.items.length === 0 ? (
+                      <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm">
+                        Nessuna spesa {COST_CENTER_LABELS[cc].toLowerCase()} nel {ccYear[cc]}.
+                      </div>
+                    ) : renderTable(group)}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
       </div>
 
       {/* Edit Dialog */}
