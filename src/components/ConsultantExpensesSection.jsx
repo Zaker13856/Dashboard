@@ -8,7 +8,8 @@ import MissionList from './MissionList';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { motion } from 'framer-motion';
-import { ListChecks, Plus, Plane, Receipt, Briefcase, Users, Layers } from 'lucide-react';
+import { ListChecks, Plus, Plane, Receipt, Briefcase, Users, Layers, Tag } from 'lucide-react';
+import { COST_CENTERS } from '@/lib/costCenter';
 
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
@@ -95,6 +96,16 @@ const ConsultantExpensesSection = () => {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [user, myProjectIds, projects, getAllExpenses]);
 
+  // Gruppi Tender / Promozione (note spese senza progetto)
+  const costCenterGroups = useMemo(() => {
+    if (!user) return [];
+    const mine = getMissionsByConsultant(user.id);
+    return COST_CENTERS
+      .filter(c => c.value !== 'progetto')
+      .map(c => ({ ...c, count: mine.filter(m => m.cost_center === c.value).length }))
+      .filter(c => c.count > 0);
+  }, [user, getMissionsByConsultant]);
+
   if (!user) return null;
 
   return (
@@ -117,7 +128,7 @@ const ConsultantExpensesSection = () => {
 
         {/* ── LE MIE SPESE ── */}
         <TabsContent value="list" className="mt-4">
-          {projectSummaries.length === 0 ? (
+          {projectSummaries.length === 0 && costCenterGroups.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">Nessuna spesa registrata. Usa "Nuova Nota Spese" per iniziare.</p>
           ) : (
             <Accordion type="multiple" className="space-y-3">
@@ -164,6 +175,24 @@ const ConsultantExpensesSection = () => {
                   </AccordionItem>
                 );
               })}
+              {costCenterGroups.map(cc => (
+                <AccordionItem key={cc.value} value={cc.value} className="border rounded-xl bg-white shadow-sm">
+                  <AccordionTrigger className="px-5 py-4 hover:no-underline">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-100 rounded-lg">
+                        <Tag className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-gray-900">{cc.label.toUpperCase()}</p>
+                        <p className="text-xs text-gray-400">{cc.count} note spese</p>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-5 pb-5">
+                    <MissionList costCenter={cc.value} />
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
             </Accordion>
           )}
         </TabsContent>

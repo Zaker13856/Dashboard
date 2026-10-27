@@ -423,7 +423,7 @@ const AddVoceDialog = ({ mission, open, onClose, onAdd }) => {
 };
 
 // ── Component ───────────────────────────────────────────────────────────────
-const MissionList = ({ projectId = null }) => {
+const MissionList = ({ projectId = null, costCenter = null }) => {
   const { user } = useAuth();
   const { getMissionsByConsultant, deleteMission, updateMission } = useMissions();
   const { getExpensesByConsultant, addExpense, deleteExpense, updateExpense } = useExpenses();
@@ -516,14 +516,16 @@ const MissionList = ({ projectId = null }) => {
   const myMissions = useMemo(() => {
     if (!user) return [];
     const all = getMissionsByConsultant(user.id);
+    if (costCenter) return all.filter(m => m.cost_center === costCenter);
     return projectId ? all.filter(m => m.project_id === projectId) : all;
-  }, [user, getMissionsByConsultant, projectId]);
+  }, [user, getMissionsByConsultant, projectId, costCenter]);
 
   const myExpenses = useMemo(() => {
     if (!user) return [];
     const all = getExpensesByConsultant(user.id);
+    if (costCenter) return all.filter(e => e.cost_center === costCenter);
     return projectId ? all.filter(e => e.project_id === projectId) : all;
-  }, [user, getExpensesByConsultant, projectId]);
+  }, [user, getExpensesByConsultant, projectId, costCenter]);
 
   const getExpensesForMission = (missionId) =>
     myExpenses.filter(e => e.mission_id === missionId)
@@ -544,6 +546,7 @@ const MissionList = ({ projectId = null }) => {
     const result = await addExpense({
       consultantId: user.id,
       projectId: mission.project_id,
+      costCenter: mission.cost_center,
       date: mission.date_from,
       paymentDate: voce.payment_date,
       type: 'travel',

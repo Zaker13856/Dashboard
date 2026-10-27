@@ -223,7 +223,11 @@ Deno.serve(async (req) => {
   if (!consultant || mission.consultant_id !== consultant.id) return json({ error: 'Permesso negato' }, 403);
 
   const consultantName = consultant?.name || caller.email || 'Consulente';
-  const projectName = project?.name || '—';
+  const COST_CENTER_LABELS: Record<string, string> = { tender: 'TENDER', promozione: 'PROMOZIONE' };
+  const cc = mission.cost_center as string | null;
+  const projectName = cc && cc !== 'progetto'
+    ? [COST_CENTER_LABELS[cc] || cc.toUpperCase(), mission.cost_center_note].filter(Boolean).join(' – ')
+    : (project?.name || '—');
 
   // Fetch spese missione
   const { data: expenses } = await admin

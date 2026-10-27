@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, Plus, Trash2, MapPin, Calendar, Users, FileText, Paperclip, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { COST_CENTERS } from '@/lib/costCenter';
 
 const PAYMENT_METHODS = [
   { value: 'carta_aziendale', label: 'Carta Aziendale' },
@@ -53,13 +54,17 @@ const MissionForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState([]);
 
-  const [header, setHeader] = useState({
+  const emptyHeader = {
+    costCenter: 'progetto',
+    costCenterNote: '',
     projectId: '',
     place: '',
     dateFrom: '',
     dateTo: '',
     travellingWith: '',
-  });
+  };
+
+  const [header, setHeader] = useState(emptyHeader);
 
   const [rows, setRows] = useState([emptyRow()]);
 
@@ -120,7 +125,8 @@ const MissionForm = () => {
       return;
     }
 
-    if (!header.projectId || !header.place || !header.dateFrom || !header.dateTo) {
+    const isProject = header.costCenter === 'progetto';
+    if ((isProject ? !header.projectId : !header.costCenterNote.trim()) || !header.place || !header.dateFrom || !header.dateTo) {
       toast({ title: 'Errore', description: 'Compila tutti i campi obbligatori della missione.', variant: 'destructive' });
       return;
     }
@@ -142,11 +148,13 @@ const MissionForm = () => {
     try {
       const { data: mission, error: mErr } = await createMission({
         consultantId: user.id,
-        projectId: header.projectId,
+        projectId: isProject ? header.projectId : null,
         place: header.place,
         dateFrom: header.dateFrom,
         dateTo: header.dateTo,
         travellingWith: header.travellingWith || null,
+        costCenter: header.costCenter,
+        costCenterNote: isProject ? null : header.costCenterNote.trim(),
       });
 
       if (mErr) {
@@ -162,7 +170,8 @@ const MissionForm = () => {
 
         const result = await addExpense({
           consultantId: user.id,
-          projectId: header.projectId,
+          projectId: isProject ? header.projectId : null,
+          costCenter: header.costCenter,
           date: header.dateFrom,
           paymentDate: r.transaction_date,
           type: 'travel',
@@ -207,7 +216,7 @@ const MissionForm = () => {
         }
 
         toast({ title: 'Nota Spese salvata', description: `${validRows.length} voci registrate per ${header.place}.` });
-        setHeader({ projectId: '', place: '', dateFrom: '', dateTo: '', travellingWith: '' });
+        setHeader(emptyHeader);
         setRows([emptyRow()]);
         setFiles([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -234,6 +243,31 @@ const MissionForm = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-1.5">
+              <Label>Tipo *</Label>
+              <Select value={header.costCenter} onValueChange={v => handleHeader('costCenter', v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COST_CENTERS.map(c => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {header.costCenter !== 'progetto' ? (
+            <div className="space-y-1.5 md:col-span-1 lg:col-span-2">
+              <Label>Di cosa si tratta *</Label>
+              <Input
+                placeholder={header.costCenter === 'tender' ? 'es. Tender CINEA mobilità urbana' : 'es. Fiera Ecomondo, incontro cliente'}
+                value={header.costCenterNote}
+                onChange={e => handleHeader('costCenterNote', e.target.value)}
+                required
+              />
+            </div>
+            ) : (
+            <div className="space-y-1.5 md:col-span-1 lg:col-span-2">
               <Label>Progetto *</Label>
               <Select value={header.projectId} onValueChange={v => handleHeader('projectId', v)}>
                 <SelectTrigger>
@@ -250,6 +284,7 @@ const MissionForm = () => {
                 </SelectContent>
               </Select>
             </div>
+            )}
 
             <div className="space-y-1.5">
               <Label>Destinazione *</Label>

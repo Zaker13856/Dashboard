@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users, Pencil, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { COST_CENTER_LABELS } from '@/lib/costCenter';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -257,8 +258,11 @@ const ExpensesPage = () => {
   const grouped = useMemo(() => {
     const map = {};
     filtered.forEach(e => {
-      const pid = e.project_id;
-      if (!map[pid]) map[pid] = { name: projectMap[pid] || 'Sconosciuto', items: [] };
+      // Tender/Promozione: gruppi propri, separati dai progetti
+      const cc = e.cost_center && e.cost_center !== 'progetto' ? e.cost_center : null;
+      const pid = cc ? `cc-${cc}` : e.project_id;
+      const name = cc ? (COST_CENTER_LABELS[cc] || cc.toUpperCase()) : (projectMap[pid] || 'Sconosciuto');
+      if (!map[pid]) map[pid] = { name, isCostCenter: !!cc, items: [] };
       map[pid].items.push(e);
     });
 
@@ -310,7 +314,7 @@ const ExpensesPage = () => {
         displayItems.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
         return { id, ...data, displayItems };
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => (a.isCostCenter - b.isCostCenter) || a.name.localeCompare(b.name));
   }, [filtered, projectMap, missionMap]);
 
   // Totali globali
@@ -542,7 +546,7 @@ const ExpensesPage = () => {
                           <p className="text-xs text-gray-400">{group.items.length} voci</p>
                         </div>
                       </div>
-                      {(() => {
+                      {!group.isCostCenter && (() => {
                         const proj = projects.find(p => p.id === group.id) || {};
                         const sT = parseFloat(proj.sold_travel) || 0;
                         const sO = parseFloat(proj.sold_other_costs) || 0;
@@ -632,6 +636,7 @@ const ExpensesPage = () => {
                                   </td>
                                   <td className="px-3 py-2 text-gray-700 font-medium">
                                     Nota spese · {e._voci.length} voci
+                                    {e.mission?.cost_center_note ? <span className="text-amber-700"> — {e.mission.cost_center_note}</span> : null}
                                     {e.mission?.travelling_with ? <span className="text-gray-400 font-normal"> — con {e.mission.travelling_with}</span> : null}
                                   </td>
                                   <td className="px-3 py-2">

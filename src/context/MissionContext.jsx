@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { missionHeading } from '@/lib/costCenter';
 
 const MissionContext = createContext();
 export const useMissions = () => useContext(MissionContext);
@@ -21,7 +22,7 @@ export const MissionProvider = ({ children }) => {
     if (data) {
       setMissions(data.map(m => ({
         ...m,
-        project_name: projMap[m.project_id] || null,
+        project_name: missionHeading(m, projMap[m.project_id]),
         consultant_name: consMap[m.consultant_id] || null,
       })));
     }
@@ -36,22 +37,29 @@ export const MissionProvider = ({ children }) => {
     return () => supabase.removeChannel(channel);
   }, [fetchMissions]);
 
-  const createMission = async ({ consultantId, projectId, place, dateFrom, dateTo, travellingWith, notes }) => {
-    const { data, error } = await supabase.from('missions').insert({
+  const createMission = async ({ consultantId, projectId, place, dateFrom, dateTo, travellingWith, notes, costCenter, costCenterNote }) => {
+    const payload = {
       consultant_id: consultantId,
-      project_id: projectId,
+      project_id: projectId || null,
       place,
       date_from: dateFrom,
       date_to: dateTo,
       travelling_with: travellingWith || null,
       notes: notes || null,
-    }).select('*').single();
+    };
+    if (costCenter && costCenter !== 'progetto') {
+      payload.cost_center = costCenter;
+      payload.cost_center_note = costCenterNote || null;
+    }
+    const { data, error } = await supabase.from('missions').insert(payload).select('*').single();
 
     if (!error && data) {
-      const { data: proj } = await supabase.from('projects').select('id,name').eq('id', projectId).single();
+      const { data: proj } = projectId
+        ? await supabase.from('projects').select('id,name').eq('id', projectId).single()
+        : { data: null };
       setMissions(prev => [{
         ...data,
-        project_name: proj?.name || null,
+        project_name: missionHeading(data, proj?.name),
       }, ...prev]);
     }
     return { data, error };
