@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 const ExpenseContext = createContext();
 
@@ -18,11 +19,21 @@ export const ExpenseProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Nessun utente (prima del login o dopo l'uscita): niente dati in memoria
+    if (!userId) {
+      setAllExpenses([]);
+      setLoading(false);
+      return;
+    }
+    // Una risposta arrivata dopo il cambio di utente viene scartata
+    let active = true;
+
     const fetchData = async () => {
       const [{ data }, { data: cons }] = await Promise.all([
-        supabase.from('expenses').select('*, project:projects!left(id,name)'),
+        fetchAllRows(() => supabase.from('expenses').select('*, project:projects!left(id,name)').order('id')),
         supabase.from('consultants').select('id, name'),
       ]);
+      if (!active) return;
       const consMap = {};
       (cons || []).forEach(c => { consMap[c.id] = c.name; });
       if (data) setAllExpenses(data.map(e => ({
@@ -35,11 +46,12 @@ export const ExpenseProvider = ({ children }) => {
 
     fetchData();
 
-    const channel = supabase.channel('expenses-changes')
+    // Nome diverso per ogni utente: il canale precedente si chiude in ritardo e verrebbe riusato già chiuso
+    const channel = supabase.channel(`expenses-changes-${userId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, fetchData)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { active = false; supabase.removeChannel(channel); };
   }, [userId]);
 
   // Split into categories based on type field

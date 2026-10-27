@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { missionHeading } from '@/lib/costCenter';
 
 const MissionContext = createContext();
@@ -13,33 +14,53 @@ export const MissionProvider = ({ children }) => {
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchMissions = useCallback(async () => {
+  // Legge le note spese con nome progetto/centro di costo e consulente
+  const loadMissions = async () => {
     const [{ data }, { data: projs }, { data: cons }] = await Promise.all([
-      supabase.from('missions').select('*').order('date_from', { ascending: false }),
+      fetchAllRows(() => supabase.from('missions').select('*').order('date_from', { ascending: false }).order('id')),
       supabase.from('projects').select('id, name'),
       supabase.from('consultants').select('id, name'),
     ]);
+    if (!data) return null;
     const projMap = {};
     (projs || []).forEach(p => { projMap[p.id] = p.name; });
     const consMap = {};
     (cons || []).forEach(c => { consMap[c.id] = c.name; });
-    if (data) {
-      setMissions(data.map(m => ({
-        ...m,
-        project_name: missionHeading(m, projMap[m.project_id]),
-        consultant_name: consMap[m.consultant_id] || null,
-      })));
-    }
+    return data.map(m => ({
+      ...m,
+      project_name: missionHeading(m, projMap[m.project_id]),
+      consultant_name: consMap[m.consultant_id] || null,
+    }));
+  };
+
+  const fetchMissions = useCallback(async () => {
+    const list = await loadMissions();
+    if (list) setMissions(list);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchMissions();
-    const channel = supabase.channel('missions-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'missions' }, fetchMissions)
+    // Nessun utente (prima del login o dopo l'uscita): niente dati in memoria
+    if (!userId) {
+      setMissions([]);
+      setLoading(false);
+      return;
+    }
+    // Una risposta arrivata dopo il cambio di utente viene scartata
+    let active = true;
+    const refresh = async () => {
+      const list = await loadMissions();
+      if (!active) return;
+      if (list) setMissions(list);
+      setLoading(false);
+    };
+    refresh();
+    // Nome diverso per ogni utente: il canale precedente si chiude in ritardo e verrebbe riusato già chiuso
+    const channel = supabase.channel(`missions-changes-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'missions' }, refresh)
       .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [fetchMissions, userId]);
+    return () => { active = false; supabase.removeChannel(channel); };
+  }, [userId]);
 
   const createMission = async ({ consultantId, projectId, place, dateFrom, dateTo, travellingWith, notes, costCenter, costCenterNote }) => {
     const payload = {

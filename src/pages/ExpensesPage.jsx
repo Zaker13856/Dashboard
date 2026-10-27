@@ -12,10 +12,17 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users, Pencil, Loader2, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COST_CENTER_LABELS } from '@/lib/costCenter';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import * as XLSX from 'xlsx';
+
+// Data di oggi nell'ora locale (toISOString usa l'ora UTC: dopo mezzanotte darebbe ancora ieri)
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 // Anni consultabili nelle schede Tender/Promozione: dall'anno in corso fino al 2022
 const CURRENT_YEAR = new Date().getFullYear();
@@ -77,7 +84,7 @@ const QuickAddForm = ({ projects, consultants = [], type: fixedType, costCenter 
   // Tender/Promozione: nessun progetto, il tipo spesa si sceglie nel form
   const [ccType, setCcType] = useState('travel');
   const type = costCenter ? ccType : fixedType;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localToday();
   const [form, setForm] = useState({ project_id: '', date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '', days: '', consultant_id: '' });
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -153,8 +160,8 @@ const QuickAddForm = ({ projects, consultants = [], type: fixedType, costCenter 
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label className="text-xs font-semibold text-gray-500">Data</Label>
-          <Input type="date" value={form.date} onChange={e => f('date', e.target.value)} />
+          <Label className="text-xs font-semibold text-gray-500">Data *</Label>
+          <Input type="date" value={form.date} onChange={e => f('date', e.target.value)} required />
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold text-gray-500">Importo € *</Label>
@@ -233,23 +240,20 @@ const ExpensesPage = () => {
   const [ccYear, setCcYear] = useState({ tender: CURRENT_YEAR, promozione: CURRENT_YEAR });
   // Scheda dell'elenco in basso: segue quella scelta in "Aggiungi Spesa"
   const [ccAddTab, setCcAddTab] = useState('tender');
-  const [listTab, setListTab] = useState('progetti');
   const [addTab, setAddTab] = useState('travel');
-  // Le due schede si seguono in entrambi i sensi
-  const changeAddTab = (v) => { setAddTab(v); setListTab(v === 'cost_centers' ? ccAddTab : 'progetti'); };
-  const changeCcAddTab = (v) => { setCcAddTab(v); setListTab(v); };
+  // Le due schede si seguono in entrambi i sensi: quella in basso si ricava da quella in alto
+  const listTab = addTab === 'cost_centers' ? ccAddTab : 'progetti';
   const changeListTab = (v) => {
-    setListTab(v);
     if (v === 'progetti') { if (addTab === 'cost_centers') setAddTab('travel'); }
     else { setAddTab('cost_centers'); setCcAddTab(v); }
   };
 
   const fetchAll = useCallback(async () => {
     const [{ data: exp }, { data: prj }, { data: cons }, { data: mis }] = await Promise.all([
-      supabase.from('expenses').select('*').order('date', { ascending: false }),
+      fetchAllRows(() => supabase.from('expenses').select('*').order('date', { ascending: false }).order('id')),
       supabase.from('projects').select('id, name, sold_travel, sold_other_costs, sold_subcontracting, sold_third_parties').order('name'),
       supabase.from('consultants').select('id, name').order('name'),
-      supabase.from('missions').select('*'),
+      fetchAllRows(() => supabase.from('missions').select('*').order('id')),
     ]);
     const consMap = {};
     (cons || []).forEach(c => { consMap[c.id] = c.name; });
@@ -282,6 +286,11 @@ const ExpensesPage = () => {
       return true;
     });
   }, [expenses, typeFilter, search, projectMap]);
+
+  const projectFiltered = useMemo(
+    () => filtered.filter(e => !e.cost_center || e.cost_center === 'progetto'),
+    [filtered]
+  );
 
   const missionMap = useMemo(() => {
     const m = {};
@@ -340,8 +349,7 @@ const ExpensesPage = () => {
   // Group by project (Tender/Promozione hanno schede proprie)
   const grouped = useMemo(() => {
     const map = {};
-    filtered.forEach(e => {
-      if (e.cost_center && e.cost_center !== 'progetto') return;
+    projectFiltered.forEach(e => {
       const pid = e.project_id;
       if (!map[pid]) map[pid] = { name: projectMap[pid] || 'Sconosciuto', items: [] };
       map[pid].items.push(e);
@@ -349,33 +357,40 @@ const ExpensesPage = () => {
     return Object.entries(map)
       .map(([id, data]) => ({ id, ...data, displayItems: toDisplayItems(data.items) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [filtered, projectMap, toDisplayItems]);
+  }, [projectFiltered, projectMap, toDisplayItems]);
+
+  // Anno di una spesa Tender/Promozione: per le note spese conta l'inizio della missione
+  // (così una nota a cavallo d'anno non si divide); senza data va nell'anno in corso, per non sparire
+  const ccYearOf = useCallback((e) => {
+    const d = (e.mission_id && missionMap[e.mission_id]?.date_from) || e.date;
+    return d ? Number(d.slice(0, 4)) : CURRENT_YEAR;
+  }, [missionMap]);
 
   // Schede Tender / Promozione: voci dell'anno scelto
   const ccGroups = useMemo(() => Object.fromEntries(Object.keys(COST_CENTER_LABELS).map(cc => {
-    const year = String(ccYear[cc]);
-    const items = expenses.filter(e => e.cost_center === cc && (e.date || '').startsWith(year));
+    const year = ccYear[cc];
+    const items = expenses.filter(e => e.cost_center === cc && ccYearOf(e) === year);
     return [cc, { id: `cc-${cc}`, name: COST_CENTER_LABELS[cc], items, displayItems: toDisplayItems(items) }];
-  })), [expenses, ccYear, toDisplayItems]);
+  })), [expenses, ccYear, ccYearOf, toDisplayItems]);
 
   // Totali globali
   const totals = useMemo(() => {
     const t = { travel: 0, other: 0, subcontract: 0, third_parties: 0, tender: 0, promozione: 0 };
-    const year = String(new Date().getFullYear());
-    filtered.forEach(e => {
-      const amt = parseFloat(e.amount) || 0;
-      // Tender/Promozione: box a parte, solo anno in corso
-      if (e.cost_center && e.cost_center !== 'progetto') {
-        if ((e.date || '').startsWith(year)) t[e.cost_center] = (t[e.cost_center] || 0) + amt;
-        return;
+    // Tender/Promozione: box a parte, solo anno in corso, non toccati dai filtri della scheda Progetti
+    expenses.forEach(e => {
+      if (e.cost_center && e.cost_center !== 'progetto' && ccYearOf(e) === CURRENT_YEAR) {
+        t[e.cost_center] = (t[e.cost_center] || 0) + (parseFloat(e.amount) || 0);
       }
+    });
+    projectFiltered.forEach(e => {
+      const amt = parseFloat(e.amount) || 0;
       if (e.type === 'travel')           t.travel        += amt;
       else if (e.type === 'subcontract')   t.subcontract   += amt;
       else if (e.type === 'third_parties') t.third_parties += amt;
       else                                 t.other         += amt;
     });
     return t;
-  }, [filtered]);
+  }, [expenses, projectFiltered, ccYearOf]);
 
   const openEdit = (e) => {
     setEditForm({
@@ -661,7 +676,7 @@ const ExpensesPage = () => {
               <PlusCircle className="w-5 h-5 text-gray-600" />
               <h3 className="font-bold text-gray-900">Aggiungi Spesa</h3>
             </div>
-            <Tabs value={addTab} onValueChange={changeAddTab} className="w-full">
+            <Tabs value={addTab} onValueChange={setAddTab} className="w-full">
               <TabsList className="bg-gray-100 p-1 w-full sm:w-auto">
                 <TabsTrigger value="travel" className="flex-1 gap-1"><Plane className="w-3 h-3" />Travel</TabsTrigger>
                 <TabsTrigger value="other_cost" className="flex-1 gap-1"><Receipt className="w-3 h-3" />Other Cost</TabsTrigger>
@@ -682,7 +697,7 @@ const ExpensesPage = () => {
                 <QuickAddForm projects={projects} type="third_parties" onSaved={fetchAll} />
               </TabsContent>
               <TabsContent value="cost_centers" className="mt-4">
-                <Tabs value={ccAddTab} onValueChange={changeCcAddTab} className="w-full">
+                <Tabs value={ccAddTab} onValueChange={setCcAddTab} className="w-full">
                   <TabsList className="bg-gray-100 p-1">
                     <TabsTrigger value="tender" className="gap-1">Tender</TabsTrigger>
                     <TabsTrigger value="promozione" className="gap-1">Promozione</TabsTrigger>
@@ -731,7 +746,7 @@ const ExpensesPage = () => {
                   <SelectItem value="third_parties">3rd Parties</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-gray-400 whitespace-nowrap">{filtered.length} record</span>
+              <span className="text-xs text-gray-400 whitespace-nowrap">{projectFiltered.length} record</span>
             </div>
 
             {/* Tabella per progetto */}

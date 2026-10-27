@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 const TimesheetContext = createContext();
 
@@ -28,12 +29,24 @@ export const TimesheetProvider = ({ children }) => {
   const [consultantLimits, setConsultantLimits] = useState({});
 
   useEffect(() => {
+    // Nessun utente (prima del login o dopo l'uscita): niente dati in memoria
+    if (!userId) {
+      setProjects([]);
+      setEntries([]);
+      setAllocations([]);
+      setLoading(false);
+      return;
+    }
+    // Una risposta arrivata dopo il cambio di utente viene scartata
+    let active = true;
+
     const fetchData = async () => {
       const [{ data: p, error: pErr }, { data: e, error: eErr }, { data: a, error: aErr }] = await Promise.all([
-        supabase.from('projects').select('*'),
-        supabase.from('timesheets').select('*'),
-        supabase.from('allocations').select('*'),
+        fetchAllRows(() => supabase.from('projects').select('*').order('id')),
+        fetchAllRows(() => supabase.from('timesheets').select('*').order('id')),
+        fetchAllRows(() => supabase.from('allocations').select('*').order('id')),
       ]);
+      if (!active) return;
       if (!pErr) setProjects(p || []);
       if (!eErr) setEntries(e || []);
       if (!aErr) setAllocations(a || []);
@@ -42,13 +55,14 @@ export const TimesheetProvider = ({ children }) => {
 
     fetchData();
 
-    const channel = supabase.channel('schema-db-changes')
+    // Nome diverso per ogni utente: il canale precedente si chiude in ritardo e verrebbe riusato già chiuso
+    const channel = supabase.channel(`schema-db-changes-${userId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'timesheets' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'allocations' }, fetchData)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { active = false; supabase.removeChannel(channel); };
   }, [userId]);
 
   const addHistoryEntry = (action, details) => {
