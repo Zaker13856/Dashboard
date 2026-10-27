@@ -234,6 +234,15 @@ const ExpensesPage = () => {
   // Scheda dell'elenco in basso: segue quella scelta in "Aggiungi Spesa"
   const [ccAddTab, setCcAddTab] = useState('tender');
   const [listTab, setListTab] = useState('progetti');
+  const [addTab, setAddTab] = useState('travel');
+  // Le due schede si seguono in entrambi i sensi
+  const changeAddTab = (v) => { setAddTab(v); setListTab(v === 'cost_centers' ? ccAddTab : 'progetti'); };
+  const changeCcAddTab = (v) => { setCcAddTab(v); setListTab(v); };
+  const changeListTab = (v) => {
+    setListTab(v);
+    if (v === 'progetti') { if (addTab === 'cost_centers') setAddTab('travel'); }
+    else { setAddTab('cost_centers'); setCcAddTab(v); }
+  };
 
   const fetchAll = useCallback(async () => {
     const [{ data: exp }, { data: prj }, { data: cons }, { data: mis }] = await Promise.all([
@@ -652,7 +661,7 @@ const ExpensesPage = () => {
               <PlusCircle className="w-5 h-5 text-gray-600" />
               <h3 className="font-bold text-gray-900">Aggiungi Spesa</h3>
             </div>
-            <Tabs defaultValue="travel" className="w-full" onValueChange={v => setListTab(v === 'cost_centers' ? ccAddTab : 'progetti')}>
+            <Tabs value={addTab} onValueChange={changeAddTab} className="w-full">
               <TabsList className="bg-gray-100 p-1 w-full sm:w-auto">
                 <TabsTrigger value="travel" className="flex-1 gap-1"><Plane className="w-3 h-3" />Travel</TabsTrigger>
                 <TabsTrigger value="other_cost" className="flex-1 gap-1"><Receipt className="w-3 h-3" />Other Cost</TabsTrigger>
@@ -673,7 +682,7 @@ const ExpensesPage = () => {
                 <QuickAddForm projects={projects} type="third_parties" onSaved={fetchAll} />
               </TabsContent>
               <TabsContent value="cost_centers" className="mt-4">
-                <Tabs value={ccAddTab} className="w-full" onValueChange={v => { setCcAddTab(v); setListTab(v); }}>
+                <Tabs value={ccAddTab} onValueChange={changeCcAddTab} className="w-full">
                   <TabsList className="bg-gray-100 p-1">
                     <TabsTrigger value="tender" className="gap-1">Tender</TabsTrigger>
                     <TabsTrigger value="promozione" className="gap-1">Promozione</TabsTrigger>
@@ -691,7 +700,7 @@ const ExpensesPage = () => {
         </Card>
 
         {/* Elenco spese: Progetti / Tender / Promozione */}
-        <Tabs value={listTab} onValueChange={setListTab} className="w-full">
+        <Tabs value={listTab} onValueChange={changeListTab} className="w-full">
           <TabsList className="bg-gray-100 p-1 w-full sm:w-auto">
             <TabsTrigger value="progetti" className="flex-1 gap-1"><Layers className="w-3 h-3" />Progetti</TabsTrigger>
             <TabsTrigger value="tender" className="flex-1 gap-1"><Tag className="w-3 h-3" />Tender</TabsTrigger>
