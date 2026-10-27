@@ -4,6 +4,7 @@
 // Deploy: npx supabase functions deploy admin-users --project-ref yhkzkpntfkzcktxdceri
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { getSecretKey, getPublishableKey } from '../_shared/keys.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,8 +23,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const serviceRoleKey = getSecretKey();
+  const anonKey = getPublishableKey();
   const defaultPassword = Deno.env.get('DEFAULT_RESET_PASSWORD');
   if (!defaultPassword) return json({ error: 'DEFAULT_RESET_PASSWORD non configurata' }, 500);
 

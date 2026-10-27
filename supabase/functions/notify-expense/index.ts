@@ -4,6 +4,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as XLSX from 'npm:xlsx@0.18.5';
+import { getSecretKey, getPublishableKey } from '../_shared/keys.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -178,8 +179,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const serviceRoleKey = getSecretKey();
+  const anonKey = getPublishableKey();
   const resendKey = Deno.env.get('RESEND_API_KEY')!;
   if (!resendKey) return json({ error: 'RESEND_API_KEY non configurata' }, 500);
 
