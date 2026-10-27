@@ -4,12 +4,12 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users, Pencil, Loader2 } from 'lucide-react';
+import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpreadsheet, PlusCircle, Briefcase, UserCog, Users, Pencil, Loader2, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COST_CENTER_LABELS } from '@/lib/costCenter';
 import { useToast } from '@/components/ui/use-toast';
@@ -84,8 +84,11 @@ const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
     const iva  = parseFloat(form.iva) || null;
     const elig = form.eligible_amount ? parseFloat(form.eligible_amount) : (iva != null ? Math.round((amt - iva) * 100) / 100 : amt);
 
+    // "cc:tender" / "cc:promozione" = centro di costo senza progetto
+    const costCenter = form.project_id.startsWith('cc:') ? form.project_id.slice(3) : null;
     const record = {
-      project_id:      form.project_id,
+      project_id:      costCenter ? null : form.project_id,
+      ...(costCenter ? { cost_center: costCenter } : {}),
       type,
       date:            form.date || null,
       description:     ((type === 'subcontract' || type === 'third_parties') && form.provider) ? `${form.provider}: ${form.description}` : form.description,
@@ -125,6 +128,10 @@ const QuickAddForm = ({ projects, consultants = [], type, onSaved }) => {
           <SelectTrigger><SelectValue placeholder="Seleziona progetto" /></SelectTrigger>
           <SelectContent>
             {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            <SelectSeparator />
+            {Object.entries(COST_CENTER_LABELS).map(([k, label]) => (
+              <SelectItem key={k} value={`cc:${k}`} className="font-semibold text-amber-700">{label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -319,10 +326,16 @@ const ExpensesPage = () => {
 
   // Totali globali
   const totals = useMemo(() => {
-    const t = { travel: 0, other: 0, subcontract: 0, third_parties: 0 };
+    const t = { travel: 0, other: 0, subcontract: 0, third_parties: 0, tender: 0, promozione: 0 };
+    const year = String(new Date().getFullYear());
     filtered.forEach(e => {
       const amt = parseFloat(e.amount) || 0;
-      if (e.type === 'travel')             t.travel        += amt;
+      // Tender/Promozione: box a parte, solo anno in corso
+      if (e.cost_center && e.cost_center !== 'progetto') {
+        if ((e.date || '').startsWith(year)) t[e.cost_center] = (t[e.cost_center] || 0) + amt;
+        return;
+      }
+      if (e.type === 'travel')           t.travel        += amt;
       else if (e.type === 'subcontract')   t.subcontract   += amt;
       else if (e.type === 'third_parties') t.third_parties += amt;
       else                                 t.other         += amt;
@@ -437,12 +450,14 @@ const ExpensesPage = () => {
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           {[
             { label: 'Travel',      value: totals.travel,        icon: Plane,    color: 'bg-blue-50 text-blue-700' },
             { label: 'Other Cost',  value: totals.other,         icon: Receipt,  color: 'bg-amber-50 text-amber-700' },
             { label: 'Subcontract', value: totals.subcontract,   icon: FileText, color: 'bg-purple-50 text-purple-700' },
             { label: '3rd Parties', value: totals.third_parties, icon: Users,    color: 'bg-pink-50 text-pink-700' },
+            { label: `Tender ${new Date().getFullYear()}`,     value: totals.tender,     icon: Tag, color: 'bg-orange-50 text-orange-700' },
+            { label: `Promozione ${new Date().getFullYear()}`, value: totals.promozione, icon: Tag, color: 'bg-teal-50 text-teal-700' },
           ].map(({ label, value, icon: Icon, color }) => (
             <Card key={label} className="border-gray-100 shadow-sm">
               <CardContent className="p-4 flex items-center gap-3">
