@@ -244,11 +244,11 @@ Deno.serve(async (req) => {
     .filter(e => e.payment_method === 'carta_personale' || e.payment_method === 'cash')
     .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
-  // Genera URL firmati allegati (7 giorni)
+  // Genera URL firmati allegati (20 giorni)
   const attachmentLinks: string[] = [];
   if (mission.receipt_paths?.length > 0) {
     for (const path of mission.receipt_paths) {
-      const { data } = await admin.storage.from('scontrini').createSignedUrl(path, 60 * 60 * 24 * 7);
+      const { data } = await admin.storage.from('scontrini').createSignedUrl(path, 60 * 60 * 24 * 20);
       if (data?.signedUrl) {
         const name = path.split('/').pop() || path;
         attachmentLinks.push(`<a href="${data.signedUrl}" style="color:#4f46e5">${name}</a>`);
@@ -316,7 +316,7 @@ Deno.serve(async (req) => {
 
     ${attachmentLinks.length > 0 ? `
     <div style="margin-bottom:16px">
-      <p style="margin:0 0 6px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Allegati (link validi 7 giorni)</p>
+      <p style="margin:0 0 6px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Allegati (link validi 20 giorni)</p>
       <ul style="margin:0;padding-left:18px">
         ${attachmentLinks.map(l => `<li style="margin-bottom:4px;font-size:13px">${l}</li>`).join('')}
       </ul>
