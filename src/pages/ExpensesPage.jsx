@@ -13,11 +13,10 @@ import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpr
 import { cn } from '@/lib/utils';
 import { COST_CENTER_LABELS } from '@/lib/costCenter';
 import { fetchAllRows } from '@/lib/fetchAllRows';
-import { groupByMission } from '@/lib/expenseDisplay';
+import { groupByMission, exportExpensesXLS } from '@/lib/expenseDisplay';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import * as XLSX from 'xlsx';
 
 // Data di oggi nell'ora locale (toISOString usa l'ora UTC: dopo mezzanotte darebbe ancora ieri)
 const localToday = () => {
@@ -415,36 +414,7 @@ const ExpensesPage = () => {
     window.dispatchEvent(new CustomEvent('expenses:updated'));
   };
 
-  const exportToXLS = (projectName, items) => {
-    const header = ['Data', 'Luogo', 'Descrizione', 'Tipo', 'Consulente', 'Importo €', 'IVA €', 'Ammissibile €'];
-    const rows = items.map(e => [
-      e.date_label || (e.date ? new Date(e.date).toLocaleDateString('it-IT') : ''),
-      e.place || '',
-      e.description || '',
-      (TYPE_CONFIG[e.type] || {}).label || e.type,
-      e.consultant?.name || e.consultant_name || '',
-      parseFloat(e.amount) || 0,
-      parseFloat(e.iva) || 0,
-      parseFloat(e.eligible_amount) || 0,
-    ]);
-    // Riga totale
-    const totAmt  = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-    const totIva  = items.reduce((s, e) => s + (parseFloat(e.iva) || 0), 0);
-    const totElig = items
-      .filter(e => e.type === 'travel' || e.type === 'other_cost')
-      .reduce((s, e) => s + (parseFloat(e.eligible_amount) || 0), 0);
-    rows.push(['TOTALE', '', '', '', '', totAmt, totIva, totElig]);
-
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    // Larghezze colonne
-    ws['!cols'] = [
-      { wch: 18 }, { wch: 14 }, { wch: 30 }, { wch: 12 },
-      { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Spese');
-    XLSX.writeFile(wb, `Spese_${projectName.replace(/\s+/g, '_')}.xlsx`);
-  };
+  const exportToXLS = exportExpensesXLS;
 
   // Tabella voci di un gruppo (progetto o Tender/Promozione di un anno)
   const renderTable = (group) => {

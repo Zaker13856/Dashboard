@@ -6,11 +6,12 @@ import { useTimesheet } from '@/context/TimesheetContext';
 import MissionForm from './MissionForm';
 import MissionList from './MissionList';
 import ProjectExpensesTable from './ProjectExpensesTable';
-import { groupByMission } from '@/lib/expenseDisplay';
+import { groupByMission, exportExpensesXLS } from '@/lib/expenseDisplay';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { motion } from 'framer-motion';
-import { ListChecks, Plus, Plane, Receipt, Briefcase, Users, Layers, Tag } from 'lucide-react';
+import { ListChecks, Plus, Plane, Receipt, Briefcase, Users, Layers, Tag, FileSpreadsheet } from 'lucide-react';
 import { COST_CENTERS } from '@/lib/costCenter';
 
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -172,6 +173,16 @@ const ConsultantExpensesSection = () => {
                         })()}
                       </div>
                     </AccordionTrigger>
+                    <div className="flex justify-end px-5 -mt-2 mb-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs text-gray-600 border-gray-200 hover:bg-gray-50"
+                        onClick={(e) => { e.stopPropagation(); exportExpensesXLS(proj.name, proj.items); }}
+                      >
+                        <FileSpreadsheet className="w-3 h-3 mr-1" />Excel
+                      </Button>
+                    </div>
 
                     <AccordionContent className="px-5 pb-5">
                       {/* Budget bars */}
