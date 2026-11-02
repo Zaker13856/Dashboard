@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { fetchConsultantNames } from '@/lib/consultantNames';
 
 const ExpenseContext = createContext();
 
@@ -29,13 +30,11 @@ export const ExpenseProvider = ({ children }) => {
     let active = true;
 
     const fetchData = async () => {
-      const [{ data }, { data: cons }] = await Promise.all([
+      const [{ data }, consMap] = await Promise.all([
         fetchAllRows(() => supabase.from('expenses').select('*, project:projects!left(id,name)').order('id')),
-        supabase.from('consultants').select('id, name'),
+        fetchConsultantNames(),
       ]);
       if (!active) return;
-      const consMap = {};
-      (cons || []).forEach(c => { consMap[c.id] = c.name; });
       if (data) setAllExpenses(data.map(e => ({
         ...e,
         project_name: e.project?.name || null,

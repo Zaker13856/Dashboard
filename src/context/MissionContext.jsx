@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { fetchConsultantNames } from '@/lib/consultantNames';
 import { missionHeading } from '@/lib/costCenter';
 
 const MissionContext = createContext();
@@ -16,16 +17,14 @@ export const MissionProvider = ({ children }) => {
 
   // Legge le note spese con nome progetto/centro di costo e consulente
   const loadMissions = async () => {
-    const [{ data }, { data: projs }, { data: cons }] = await Promise.all([
+    const [{ data }, { data: projs }, consMap] = await Promise.all([
       fetchAllRows(() => supabase.from('missions').select('*').order('date_from', { ascending: false }).order('id')),
       supabase.from('projects').select('id, name'),
-      supabase.from('consultants').select('id, name'),
+      fetchConsultantNames(),
     ]);
     if (!data) return null;
     const projMap = {};
     (projs || []).forEach(p => { projMap[p.id] = p.name; });
-    const consMap = {};
-    (cons || []).forEach(c => { consMap[c.id] = c.name; });
     return data.map(m => ({
       ...m,
       project_name: missionHeading(m, projMap[m.project_id]),
