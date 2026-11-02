@@ -5,6 +5,8 @@ import { useMissions } from '@/context/MissionContext';
 import { useTimesheet } from '@/context/TimesheetContext';
 import MissionForm from './MissionForm';
 import MissionList from './MissionList';
+import ProjectExpensesTable from './ProjectExpensesTable';
+import { groupByMission } from '@/lib/expenseDisplay';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { motion } from 'framer-motion';
@@ -59,8 +61,14 @@ const BudgetBar = ({ icon: Icon, label, consumed, budget, color }) => {
 const ConsultantExpensesSection = () => {
   const { user } = useAuth();
   const { getAllExpenses } = useExpenses();
-  const { getMissionsByConsultant } = useMissions();
+  const { missions, getMissionsByConsultant } = useMissions();
   const { projects } = useTimesheet();
+
+  const missionMap = useMemo(() => {
+    const m = {};
+    missions.forEach(mi => { m[mi.id] = mi; });
+    return m;
+  }, [missions]);
 
   // Projects where the consultant actually has expenses or missions
   const myProjectIds = useMemo(() => {
@@ -89,12 +97,11 @@ const ConsultantExpensesSection = () => {
             .filter(e => e.type === t)
             .reduce((s, e) => s + (parseFloat(e.eligible_amount) || parseFloat(e.amount) || 0), 0);
         });
-        // My own travel expenses for "n. voci" count
-        const myVoci = projExp.filter(e => e.consultant_id === user.id).length;
-        return { ...p, consumed, myVoci };
+        // Tutte le spese del progetto (travel di tutti, other cost, subcontract...), come le vede l'admin
+        return { ...p, consumed, items: projExp, displayItems: groupByMission(projExp, missionMap) };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [user, myProjectIds, projects, getAllExpenses]);
+  }, [user, myProjectIds, projects, getAllExpenses, missionMap]);
 
   // Gruppi Tender / Promozione (note spese senza progetto)
   const costCenterGroups = useMemo(() => {
@@ -144,9 +151,25 @@ const ConsultantExpensesSection = () => {
                           </div>
                           <div className="text-left">
                             <p className="font-bold text-gray-900">{proj.name}</p>
-                            <p className="text-xs text-gray-400">{proj.myVoci} voci</p>
+                            <p className="text-xs text-gray-400">{proj.items.length} voci</p>
                           </div>
                         </div>
+                        {(() => {
+                          const sT = parseFloat(proj.sold_travel) || 0;
+                          const sO = parseFloat(proj.sold_other_costs) || 0;
+                          const sS = parseFloat(proj.sold_subcontracting) || 0;
+                          const s3 = parseFloat(proj.sold_third_parties) || 0;
+                          return (
+                            <div className="hidden md:flex items-center gap-4 text-xs">
+                              <span className="text-gray-400 font-medium uppercase tracking-wide text-[10px]">Venduto:</span>
+                              <span className="text-blue-600 font-semibold">Travel: € {fmt(sT)}</span>
+                              <span className="text-amber-600 font-semibold">Other: € {fmt(sO)}</span>
+                              <span className="text-purple-600 font-semibold">Sub: € {fmt(sS)}</span>
+                              <span className="text-pink-600 font-semibold">3rd: € {fmt(s3)}</span>
+                              <span className="text-green-700 font-bold">Tot: € {fmt(sT + sO + sS + s3)}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </AccordionTrigger>
 
@@ -169,7 +192,12 @@ const ConsultantExpensesSection = () => {
                         })}
                       </div>
 
-                      {/* Mission list for this project */}
+                      {/* Tutte le spese del progetto (sola lettura) */}
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">Tutte le spese del progetto</h4>
+                      <ProjectExpensesTable name={proj.name} items={proj.items} displayItems={proj.displayItems} />
+
+                      {/* Note spese del consulente su questo progetto */}
+                      <h4 className="text-sm font-bold text-gray-900 mt-6 mb-2">Le mie note spese</h4>
                       <MissionList projectId={proj.id} />
                     </AccordionContent>
                   </AccordionItem>
