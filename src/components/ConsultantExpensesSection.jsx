@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useExpenses } from '@/context/ExpenseContext';
 import { useMissions } from '@/context/MissionContext';
@@ -63,6 +63,8 @@ const ConsultantExpensesSection = () => {
   const { user } = useAuth();
   const { getAllExpenses } = useExpenses();
   const { missions, getMissionsByConsultant } = useMissions();
+  // Penna nella tabella del progetto: apre la propria nota spese in "Le mie note spese"
+  const [focusMission, setFocusMission] = useState(null);
   const { projects } = useTimesheet();
 
   const missionMap = useMemo(() => {
@@ -205,11 +207,17 @@ const ConsultantExpensesSection = () => {
 
                       {/* Tutte le spese del progetto (sola lettura) */}
                       <h4 className="text-sm font-bold text-gray-900 mb-2">Tutte le spese del progetto</h4>
-                      <ProjectExpensesTable name={proj.name} items={proj.items} displayItems={proj.displayItems} />
+                      <ProjectExpensesTable
+                        name={proj.name}
+                        items={proj.items}
+                        displayItems={proj.displayItems}
+                        ownConsultantId={user.id}
+                        onEditMission={(id) => setFocusMission({ id })}
+                      />
 
                       {/* Note spese del consulente su questo progetto */}
                       <h4 className="text-sm font-bold text-gray-900 mt-6 mb-2">Le mie note spese</h4>
-                      <MissionList projectId={proj.id} />
+                      <MissionList projectId={proj.id} focus={focusMission} />
                     </AccordionContent>
                   </AccordionItem>
                 );

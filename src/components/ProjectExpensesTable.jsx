@@ -1,9 +1,10 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { MapPin } from 'lucide-react';
+import { MapPin, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Tabella spese di un progetto in sola lettura (la stessa dell'admin, senza modifica/elimina)
+// Tabella spese di un progetto in sola lettura (la stessa dell'admin, senza modifica/elimina).
+// Sulle note spese di chi guarda (ownConsultantId) c'è la penna: onEditMission apre la nota sotto.
 
 const fmt = n => new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
@@ -14,7 +15,7 @@ const TYPE_CONFIG = {
   third_parties: { label: '3rd Parties', color: 'bg-pink-100 text-pink-700 border-pink-200' },
 };
 
-const ProjectExpensesTable = ({ name, items, displayItems }) => {
+const ProjectExpensesTable = ({ name, items, displayItems, ownConsultantId = null, onEditMission = null }) => {
   const sum = (k) => items.reduce((s, e) => s + (parseFloat(e[k]) || 0), 0);
   const eligible = items
     .filter(e => e.type === 'travel' || e.type === 'other_cost')
@@ -38,6 +39,7 @@ const ProjectExpensesTable = ({ name, items, displayItems }) => {
             <th className="px-3 py-2 text-right font-medium">Importo €</th>
             <th className="px-3 py-2 text-right font-medium">IVA €</th>
             <th className="px-3 py-2 text-right font-medium">Ammissibile €</th>
+            <th className="px-3 py-2 w-10"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -67,6 +69,17 @@ const ProjectExpensesTable = ({ name, items, displayItems }) => {
                   <td className="px-3 py-2 text-right font-bold text-gray-900">{fmt(e.amount)}</td>
                   <td className="px-3 py-2 text-right text-red-600">{e.iva ? fmt(e.iva) : '—'}</td>
                   <td className="px-3 py-2 text-right font-bold text-green-700">{fmt(e.eligible_amount)}</td>
+                  <td className="px-3 py-1">
+                    {onEditMission && ownConsultantId && e.mission?.consultant_id === ownConsultantId ? (
+                      <button
+                        onClick={() => onEditMission(e.mission.id)}
+                        className="text-blue-400 hover:text-blue-600 p-1 rounded"
+                        title="Modifica la tua nota spese (aggiungi o correggi voci)"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               );
             }
@@ -100,6 +113,7 @@ const ProjectExpensesTable = ({ name, items, displayItems }) => {
                 <td className="px-3 py-2 text-right font-semibold text-green-700">
                   {e.eligible_amount ? fmt(e.eligible_amount) : '—'}
                 </td>
+                <td></td>
               </tr>
             );
           })}
@@ -110,6 +124,7 @@ const ProjectExpensesTable = ({ name, items, displayItems }) => {
             <td className="px-3 py-2 text-right text-gray-900">{fmt(sum('amount'))}</td>
             <td className="px-3 py-2 text-right text-red-600">{fmt(sum('iva'))}</td>
             <td className="px-3 py-2 text-right text-green-700">{fmt(eligible)}</td>
+            <td></td>
           </tr>
         </tfoot>
       </table>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useExpenses } from '@/context/ExpenseContext';
 import { useMissions } from '@/context/MissionContext';
@@ -423,8 +423,15 @@ const AddVoceDialog = ({ mission, open, onClose, onAdd }) => {
 };
 
 // ── Component ───────────────────────────────────────────────────────────────
-const MissionList = ({ projectId = null, costCenter = null }) => {
+const MissionList = ({ projectId = null, costCenter = null, focus = null }) => {
   const { user } = useAuth();
+  // Note spese aperte; "focus" ({ id }) arriva dalla penna della tabella del progetto: apre la nota e ci scorre sopra
+  const [openMissions, setOpenMissions] = useState([]);
+  useEffect(() => {
+    if (!focus?.id) return;
+    setOpenMissions(prev => prev.includes(focus.id) ? prev : [...prev, focus.id]);
+    setTimeout(() => document.getElementById(`mission-${focus.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }, [focus]);
   const { getMissionsByConsultant, deleteMission, updateMission } = useMissions();
   const { getExpensesByConsultant, addExpense, deleteExpense, updateExpense } = useExpenses();
   const { toast } = useToast();
@@ -595,7 +602,7 @@ const MissionList = ({ projectId = null, costCenter = null }) => {
           onAdd={handleAddVoce}
         />
       )}
-      <Accordion type="multiple" className="space-y-3">
+      <Accordion type="multiple" value={openMissions} onValueChange={setOpenMissions} className="space-y-3">
         {myMissions.map(mission => {
           const items = getExpensesForMission(mission.id);
           const totalAmt = items.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
@@ -609,7 +616,7 @@ const MissionList = ({ projectId = null, costCenter = null }) => {
             : `${fmtDate(mission.date_from)} – ${fmtDate(mission.date_to)}`;
 
           return (
-            <AccordionItem key={mission.id} value={mission.id} className="border rounded-xl bg-white shadow-sm">
+            <AccordionItem key={mission.id} id={`mission-${mission.id}`} value={mission.id} className="border rounded-xl bg-white shadow-sm scroll-mt-4">
               <AccordionTrigger className="px-5 py-4 hover:no-underline">
                 <div className="flex items-center justify-between w-full pr-4">
                   <div className="flex items-center gap-3">
