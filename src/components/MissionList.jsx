@@ -554,6 +554,7 @@ const MissionList = ({ projectId = null, costCenter = null, focus = null }) => {
       consultantId: user.id,
       projectId: mission.project_id,
       costCenter: mission.cost_center,
+      tenderId: mission.tender_id,
       date: mission.date_from,
       paymentDate: voce.payment_date,
       type: 'travel',

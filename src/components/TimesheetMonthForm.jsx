@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
 import { useToast } from '@/components/ui/use-toast';
 import { exportConsultantTimesheet } from '@/lib/timesheetExport';
+import { fetchTenders, TENDER_ACTIVITY_TYPE } from '@/lib/tenders';
 
 const MONTH_NAMES_IT = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -22,6 +23,15 @@ const ACTIVITY_CATEGORIES = [
   { value: 'consulenza', label: 'Consulenza' },
   { value: 'altro',      label: 'Altro' },
 ];
+// "+ Nuova attività" a nota libera: i Tender si scelgono dall'elenco ("+ Aggiungi Tender")
+const NEW_ACTIVITY_CATEGORIES = ACTIVITY_CATEGORIES.filter(c => c.value !== TENDER_ACTIVITY_TYPE);
+
+// Riga timesheet che appartiene a un'attività fissa: per i Tender conta il collegamento,
+// per le altre (e per le righe Tender vecchie senza collegamento) tipo + nota
+const rowMatchesActivity = (r, activity) => {
+  if (activity.tender_id && r.tender_id) return r.tender_id === activity.tender_id;
+  return !r.tender_id && r.activity_type === activity.activity_type && r.activity_note === activity.activity_note;
+};
 
 
 let localIdCounter = 0;
@@ -54,6 +64,10 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
   const [newActivityType, setNewActivityType] = useState('proposta');
   const [newActivityNote, setNewActivityNote] = useState('');
 
+  // Tender caricati dall'admin (tutti, anche archiviati: servono i nomi delle righe vecchie)
+  const [tenders, setTenders]                 = useState([]);
+  const [selectedTenderId, setSelectedTenderId] = useState('');
+
   // Inline edit per riga progetto (Current Month Entries)
   const [editingProjectLocalId, setEditingProjectLocalId] = useState(null);
   const [editingProjectHours,   setEditingProjectHours]   = useState('');
@@ -80,21 +94,29 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
       isFirstLoad.current = true;
       projectRowsToDelete.current = [];
 
-      const { data: activitiesData } = await supabase
-        .from('consultant_activities')
-        .select('*')
-        .eq('consultant_id', user.id)
-        .eq('status', 'active')
-        .order('created_at');
-      const loadedActivities = activitiesData || [];
-      setActivities(loadedActivities);
-
-      const { data: rows } = await supabase
-        .from('timesheets')
-        .select('*')
-        .eq('consultant_id', user.id)
-        .eq('date', firstOfMonth);
+      const [{ data: activitiesData }, { data: rows }, tenderList] = await Promise.all([
+        supabase
+          .from('consultant_activities')
+          .select('*')
+          .eq('consultant_id', user.id)
+          .eq('status', 'active')
+          .order('created_at'),
+        supabase
+          .from('timesheets')
+          .select('*')
+          .eq('consultant_id', user.id)
+          .eq('date', firstOfMonth),
+        fetchTenders(),
+      ]);
       const dbRows = rows || [];
+      setTenders(tenderList);
+
+      // Tender archiviato: la riga sparisce, a meno che in questo mese ci siano già ore
+      const archivedIds = new Set(tenderList.filter(t => t.status === 'archived').map(t => t.id));
+      const loadedActivities = (activitiesData || []).filter(a =>
+        !a.tender_id || !archivedIds.has(a.tender_id) || dbRows.some(r => rowMatchesActivity(r, a))
+      );
+      setActivities(loadedActivities);
 
       const newFixed = {
         ferie: 0, malattia: 0,
@@ -126,10 +148,7 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
 
       const newActivityHours = {};
       loadedActivities.forEach(activity => {
-        const tsRow = dbRows.find(r =>
-          r.activity_type === activity.activity_type &&
-          r.activity_note === activity.activity_note
-        );
+        const tsRow = dbRows.find(r => rowMatchesActivity(r, activity));
         newActivityHours[activity.id] = {
           timesheetId: tsRow?.id || null,
           hours: tsRow ? parseFloat(tsRow.hours) || 0 : 0,
@@ -204,13 +223,17 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
         if (!activity) continue;
         if (hours > 0) {
           if (timesheetId) {
-            await supabase.from('timesheets').update({ hours }).eq('id', timesheetId);
+            // Tender: la riga prende sempre il collegamento (anche se era stata scritta senza)
+            await supabase.from('timesheets')
+              .update(activity.tender_id ? { hours, tender_id: activity.tender_id } : { hours })
+              .eq('id', timesheetId);
           } else {
             const { data } = await supabase.from('timesheets').insert({
               consultant_id: user.id,
               date: firstOfMonth,
               activity_type: activity.activity_type,
               activity_note: activity.activity_note,
+              tender_id: activity.tender_id || null,
               hours,
               project_id: null,
             }).select().single();
@@ -352,6 +375,35 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
       setShowNewActivity(false);
     }
   };
+
+  // Tender scelto dall'elenco: diventa una riga fissa (nota = nome del Tender, per Excel e vecchie viste)
+  const handleAddTender = async () => {
+    const tender = tenders.find(t => t.id === selectedTenderId);
+    if (!tender) return;
+    if (activities.some(a => a.tender_id === tender.id)) return;
+    const { data, error } = await supabase.from('consultant_activities').insert({
+      consultant_id: user.id,
+      activity_type: TENDER_ACTIVITY_TYPE,
+      activity_note: tender.name,
+      tender_id: tender.id,
+      status: 'active',
+    }).select().single();
+    if (error) {
+      toast({ title: 'Errore', description: error.message, variant: 'destructive' });
+      return;
+    }
+    if (data) {
+      setActivities(prev => [...prev, data]);
+      setActivityHours(prev => ({ ...prev, [data.id]: { timesheetId: null, hours: 0 } }));
+      setSelectedTenderId('');
+    }
+  };
+
+  const tenderName = (activity) =>
+    tenders.find(t => t.id === activity.tender_id)?.name || activity.activity_note;
+
+  const tendersToAdd = tenders
+    .filter(t => t.status !== 'archived' && !activities.some(a => a.tender_id === t.id));
 
   const handlePrevMonth = () => {
     if (selectedMonth === 0) { setSelectedYear(y => y - 1); setSelectedMonth(11); }
@@ -583,12 +635,17 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
         )}
 
         {activities.map(activity => {
-          const catLabel = ACTIVITY_CATEGORIES.find(c => c.value === activity.activity_type)?.label || activity.activity_type;
+          const isTender = !!activity.tender_id;
+          const catLabel = isTender
+            ? 'Tender'
+            : (ACTIVITY_CATEGORIES.find(c => c.value === activity.activity_type)?.label || activity.activity_type);
           const ah = activityHours[activity.id] || { timesheetId: null, hours: 0 };
           return (
             <div key={activity.id} className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-500 w-24 shrink-0">{catLabel}</span>
-              <span className="flex-1 text-sm text-gray-700">{activity.activity_note}</span>
+              <span className={`text-xs font-medium w-24 shrink-0 ${isTender ? 'text-orange-600' : 'text-gray-500'}`}>{catLabel}</span>
+              <span className={`flex-1 text-sm ${isTender ? 'font-medium text-gray-800' : 'text-gray-700'}`}>
+                {isTender ? tenderName(activity) : activity.activity_note}
+              </span>
               <input
                 type="number" min="0" step="0.5"
                 className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right"
@@ -613,7 +670,7 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
               value={newActivityType}
               onChange={e => setNewActivityType(e.target.value)}
             >
-              {ACTIVITY_CATEGORIES.map(c => (
+              {NEW_ACTIVITY_CATEGORIES.map(c => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
@@ -648,6 +705,27 @@ const TimesheetMonthForm = ({ selectedYear, setSelectedYear, selectedMonth, setS
           >
             + Nuova attività
           </button>
+        )}
+
+        {/* Tender: si sceglie solo dall'elenco caricato dall'admin */}
+        {tendersToAdd.length > 0 && (
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+            <select
+              className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm bg-white"
+              value={selectedTenderId}
+              onChange={e => setSelectedTenderId(e.target.value)}
+            >
+              <option value="">— Seleziona Tender —</option>
+              {tendersToAdd.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <button
+              onClick={handleAddTender}
+              disabled={!selectedTenderId}
+              className="px-3 py-1.5 text-sm rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              + Aggiungi Tender
+            </button>
+          </div>
         )}
       </div>
 

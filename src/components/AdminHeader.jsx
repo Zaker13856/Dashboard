@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen, Archive, Clock, ShieldCheck } from 'lucide-react';
+import { LogOut, User, Bell, LayoutDashboard, Briefcase, Users, CreditCard, BarChart2, BookOpen, Archive, Clock, ShieldCheck, Gavel } from 'lucide-react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import MfaSecurityPanel from '@/components/MfaSecurityPanel';
@@ -21,6 +21,7 @@ const AdminHeader = () => {
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
     { label: 'Projects', icon: Briefcase, path: '/admin/projects' },
+    { label: 'Tender', icon: Gavel, path: '/admin/tenders' },
     { label: 'Consultants', icon: Users, path: '/admin/consultants' },
     { label: 'Reports', icon: BarChart2, path: '/admin/reports' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },

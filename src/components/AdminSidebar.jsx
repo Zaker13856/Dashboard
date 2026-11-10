@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, CreditCard, Clock, Settings, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, CreditCard, Clock, Settings, BookOpen, Gavel } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const AdminSidebar = () => {
@@ -10,6 +10,7 @@ const AdminSidebar = () => {
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
     { label: 'Projects', icon: Briefcase, path: '/admin/projects' },
+    { label: 'Tender', icon: Gavel, path: '/admin/tenders' },
     { label: 'Consultants', icon: Users, path: '/admin/consultants' },
     { label: 'Expenses', icon: CreditCard, path: '/admin/expenses' },
     { label: 'EU Expert Guida', icon: BookOpen, path: '/eu-expert-guida.html', external: true },

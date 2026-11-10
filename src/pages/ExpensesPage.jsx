@@ -13,6 +13,7 @@ import { Search, Plane, Receipt, Euro, Trash2, Layers, MapPin, FileText, FileSpr
 import { cn } from '@/lib/utils';
 import { COST_CENTER_LABELS } from '@/lib/costCenter';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { fetchTenders, activeTenders } from '@/lib/tenders';
 import { groupByMission, exportExpensesXLS } from '@/lib/expenseDisplay';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -88,10 +89,24 @@ const QuickAddForm = ({ projects, consultants = [], type: fixedType, costCenter 
   const [form, setForm] = useState({ project_id: '', date: today, description: '', amount: '', place: '', invoice_ref: '', provider: '', iva: '', eligible_amount: '', days: '', consultant_id: '' });
   const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
+  // Tender: si sceglie dall'elenco ('none' = spesa vecchia senza Tender collegato)
+  const [tenders, setTenders]   = useState([]);
+  const [tenderId, setTenderId] = useState('');
+  useEffect(() => {
+    if (costCenter !== 'tender') return;
+    let active = true;
+    fetchTenders().then(list => { if (active) setTenders(activeTenders(list)); });
+    return () => { active = false; };
+  }, [costCenter]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if ((!costCenter && !form.project_id) || !form.amount || !form.description) {
       toast({ title: 'Campi obbligatori', description: costCenter ? 'Descrizione e importo sono richiesti.' : 'Progetto, descrizione e importo sono richiesti.', variant: 'destructive' });
+      return;
+    }
+    if (costCenter === 'tender' && !tenderId) {
+      toast({ title: 'Campi obbligatori', description: 'Scegli il Tender (o "Nessuno" per una spesa vecchia).', variant: 'destructive' });
       return;
     }
     const amt  = parseFloat(form.amount) || 0;
@@ -101,6 +116,7 @@ const QuickAddForm = ({ projects, consultants = [], type: fixedType, costCenter 
     const record = {
       project_id:      costCenter ? null : form.project_id,
       ...(costCenter ? { cost_center: costCenter } : {}),
+      ...(costCenter === 'tender' && tenderId && tenderId !== 'none' ? { tender_id: tenderId } : {}),
       type,
       date:            form.date || null,
       description:     ((type === 'subcontract' || type === 'third_parties') && form.provider) ? `${form.provider}: ${form.description}` : form.description,
@@ -136,6 +152,18 @@ const QuickAddForm = ({ projects, consultants = [], type: fixedType, costCenter 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
+      {costCenter === 'tender' && (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold text-gray-500">Tender *</Label>
+          <Select value={tenderId} onValueChange={setTenderId}>
+            <SelectTrigger><SelectValue placeholder="Seleziona Tender" /></SelectTrigger>
+            <SelectContent>
+              {tenders.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+              <SelectItem value="none">— Nessuno (spesa vecchia) —</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       {costCenter ? (
         <div className="space-y-1">
           <Label className="text-xs font-semibold text-gray-500">Tipo spesa *</Label>

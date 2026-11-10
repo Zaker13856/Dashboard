@@ -61,7 +61,7 @@ export const MissionProvider = ({ children }) => {
     return () => { active = false; supabase.removeChannel(channel); };
   }, [userId]);
 
-  const createMission = async ({ consultantId, projectId, place, dateFrom, dateTo, travellingWith, notes, costCenter, costCenterNote }) => {
+  const createMission = async ({ consultantId, projectId, place, dateFrom, dateTo, travellingWith, notes, costCenter, costCenterNote, tenderId }) => {
     const payload = {
       consultant_id: consultantId,
       project_id: projectId || null,
@@ -74,6 +74,7 @@ export const MissionProvider = ({ children }) => {
     if (costCenter && costCenter !== 'progetto') {
       payload.cost_center = costCenter;
       payload.cost_center_note = costCenterNote || null;
+      if (costCenter === 'tender' && tenderId) payload.tender_id = tenderId;
     }
     const { data, error } = await supabase.from('missions').insert(payload).select('*').single();
 

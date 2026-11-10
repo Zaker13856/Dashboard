@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTimesheet } from '@/context/TimesheetContext';
 import { useExpenses } from '@/context/ExpenseContext';
@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Loader2, Plus, Trash2, MapPin, Calendar, Users, FileText, Paperclip, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COST_CENTERS } from '@/lib/costCenter';
+import { fetchTenders, activeTenders } from '@/lib/tenders';
 
 const PAYMENT_METHODS = [
   { value: 'carta_aziendale', label: 'Carta Aziendale' },
@@ -57,6 +58,7 @@ const MissionForm = () => {
   const emptyHeader = {
     costCenter: 'progetto',
     costCenterNote: '',
+    tenderId: '',
     projectId: '',
     place: '',
     dateFrom: '',
@@ -67,6 +69,14 @@ const MissionForm = () => {
   const [header, setHeader] = useState(emptyHeader);
 
   const [rows, setRows] = useState([emptyRow()]);
+
+  // Tender: si sceglie dall'elenco caricato dall'admin
+  const [tenders, setTenders] = useState([]);
+  useEffect(() => {
+    let active = true;
+    fetchTenders().then(list => { if (active) setTenders(activeTenders(list)); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   const activeProjects = Array.isArray(projects)
     ? projects.filter(p => p.status !== 'completed' && p.status !== 'archived')
@@ -126,7 +136,10 @@ const MissionForm = () => {
     }
 
     const isProject = header.costCenter === 'progetto';
-    if ((isProject ? !header.projectId : !header.costCenterNote.trim()) || !header.place || !header.dateFrom || !header.dateTo) {
+    const isTender  = header.costCenter === 'tender';
+    const chosenTender = isTender ? tenders.find(t => t.id === header.tenderId) : null;
+    const ccMissing = isProject ? !header.projectId : isTender ? !chosenTender : !header.costCenterNote.trim();
+    if (ccMissing || !header.place || !header.dateFrom || !header.dateTo) {
       toast({ title: 'Errore', description: 'Compila tutti i campi obbligatori della missione.', variant: 'destructive' });
       return;
     }
@@ -154,7 +167,9 @@ const MissionForm = () => {
         dateTo: header.dateTo,
         travellingWith: header.travellingWith || null,
         costCenter: header.costCenter,
-        costCenterNote: isProject ? null : header.costCenterNote.trim(),
+        // Tender: la nota è il nome del Tender (così email ed Excel restano uguali)
+        costCenterNote: isProject ? null : isTender ? chosenTender.name : header.costCenterNote.trim(),
+        tenderId: isTender ? chosenTender.id : null,
       });
 
       if (mErr) {
@@ -172,6 +187,7 @@ const MissionForm = () => {
           consultantId: user.id,
           projectId: isProject ? header.projectId : null,
           costCenter: header.costCenter,
+          tenderId: isTender ? chosenTender.id : null,
           date: header.dateFrom,
           paymentDate: r.transaction_date,
           type: 'travel',
@@ -256,7 +272,23 @@ const MissionForm = () => {
               </Select>
             </div>
 
-            {header.costCenter !== 'progetto' ? (
+            {header.costCenter === 'tender' ? (
+            <div className="space-y-1.5 md:col-span-1 lg:col-span-2">
+              <Label>Tender *</Label>
+              <Select value={header.tenderId} onValueChange={v => handleHeader('tenderId', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleziona Tender" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenders.length > 0 ? (
+                    tenders.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-gray-400">Nessun Tender disponibile</div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            ) : header.costCenter !== 'progetto' ? (
             <div className="space-y-1.5 md:col-span-1 lg:col-span-2">
               <Label>Di cosa si tratta *</Label>
               <Input

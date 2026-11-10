@@ -11,6 +11,7 @@ import { AuthProvider } from './context/AuthContext';
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const ProjectManagement = lazy(() => import('./pages/ProjectManagement'));
+const TenderManagement = lazy(() => import('./pages/TenderManagement'));
 const ConsultantsPage = lazy(() => import('./pages/ConsultantsPage'));
 const ExpensesPage = lazy(() => import('./pages/ExpensesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
@@ -48,6 +49,7 @@ function App() {
                   {/* Admin routes */}
                   <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
                   <Route path="/admin/projects" element={<ProtectedRoute allowedRoles={['admin']}><ProjectManagement /></ProtectedRoute>} />
+                  <Route path="/admin/tenders" element={<ProtectedRoute allowedRoles={['admin']}><TenderManagement /></ProtectedRoute>} />
                   <Route path="/admin/consultants" element={<ProtectedRoute allowedRoles={['admin']}><ConsultantsPage /></ProtectedRoute>} />
                   <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><ReportsPage /></ProtectedRoute>} />
                   <Route path="/admin/expenses" element={<ProtectedRoute allowedRoles={['admin']}><ExpensesPage /></ProtectedRoute>} />
