@@ -10,3 +10,4 @@ dist/
 public/
 scripts/list-ftp.cjs
 backups/
+supabase/.temp/
